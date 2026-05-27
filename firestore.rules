@@ -1,0 +1,73 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // 0. Default Deny Catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 3. Primitive Definitions
+    function isSignedIn() { return request.auth != null; }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    function isAdmin() { return isSignedIn() && request.auth.token.email == '7888943984@neon.trade'; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    
+    // 4. Fortress Rules
+    
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if isSignedIn();
+      allow update: if isOwner(userId) || isAdmin();
+    }
+
+    match /users_by_phone/{phone} {
+      allow get: if true;
+      allow create, update: if isSignedIn() || isAdmin(); 
+    }
+
+    match /wingo_history/{docId} {
+      allow list: if true; 
+      allow get: if true;
+      allow write: if isAdmin(); // Server or admin
+    }
+
+    match /wingoBets/{betId} {
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow delete: if false;
+    }
+
+    match /depositRequests/{requestId} {
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn();
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow update: if isAdmin();
+    }
+
+    match /withdrawRequests/{requestId} {
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn();
+      allow update: if isAdmin();
+    }
+
+    match /deposits/{depositId} {
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    match /minesGame/{gameId} {
+      allow read: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid || isAdmin());
+      allow write: if isSignedIn() && (incoming() == null || incoming().userId == request.auth.uid || isAdmin());
+    }
+
+    match /_server_health/{docId} {
+      allow read: if true;
+    }
+  }
+}

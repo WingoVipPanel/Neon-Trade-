@@ -1,0 +1,92 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Represents a player in the casino game",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Unique identifier (6 digits)" },
+        "phoneNumber": { "type": "string", "description": "User's phone number" },
+        "password": { "type": "string", "description": "User's password" },
+        "balance": { "type": "number", "description": "User's current balance" },
+        "nickname": { "type": "string", "description": "User's display name" },
+        "avatar": { "type": "string", "description": "URL to user's avatar" },
+        "registeredAt": { "type": "string", "format": "date-time", "description": "Time of registration" }
+      },
+      "required": ["uid", "phoneNumber", "password", "balance"]
+    },
+    "WingoHistory": {
+      "title": "WingoHistory",
+      "description": "Historical record of a Wingo game draw",
+      "type": "object",
+      "properties": {
+        "period": { "type": "string" },
+        "number": { "type": "number" },
+        "color": { "type": "string" },
+        "size": { "type": "string" },
+        "room": { "type": "string" },
+        "serverTimestamp": { "type": "object", "description": "Firestore server timestamp" }
+      },
+      "required": ["period", "number", "color", "size", "room"]
+    },
+    "WingoBet": {
+      "title": "WingoBet",
+      "description": "A bet placed by a user in Wingo",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "period": { "type": "string" },
+        "room": { "type": "string" },
+        "amount": { "type": "number" },
+        "selection": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "won", "lost"] },
+        "winAmount": { "type": "number" },
+        "createdAt": { "type": "object" }
+      }
+    },
+    "DepositRequest": {
+      "title": "DepositRequest",
+      "description": "User request to deposit funds",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "amount": { "type": "number" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "object" }
+      }
+    },
+    "WithdrawRequest": {
+      "title": "WithdrawRequest",
+      "description": "User request to withdraw funds",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "amount": { "type": "number" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "object" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Collection of users"
+    },
+    "/wingo_history/{docId}": {
+      "schema": "WingoHistory",
+      "description": "Game history for all rooms"
+    },
+    "/wingoBets/{betId}": {
+      "schema": "WingoBet",
+      "description": "User bets"
+    },
+    "/depositRequests/{requestId}": {
+      "schema": "DepositRequest",
+      "description": "Deposit requests"
+    },
+    "/withdrawRequests/{requestId}": {
+      "schema": "WithdrawRequest",
+      "description": "Withdrawal requests"
+    }
+  }
+}

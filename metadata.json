@@ -1,0 +1,6 @@
+{
+  "name": "Neon Trade",
+  "description": "High fidelity casino registration & login app with dynamic bonus alerts, interactive spin rewards, custom branding panels, and real-time validation.",
+  "requestFramePermissions": ["clipboard-read", "clipboard-write"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
