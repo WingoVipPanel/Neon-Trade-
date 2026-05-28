@@ -5728,6 +5728,10 @@ export default function App() {
                             alt={`Avatar Option ${idx + 1}`}
                             loading="eager"
                             decoding="sync"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = 'https://via.placeholder.com/150';
+                              console.error('Avatar load error:', url);
+                            }}
                             className={`h-full w-full rounded-full object-cover border-2 transition-all duration-200 ${
                               isSelected 
                                 ? 'border-[#ff3a3a] filter brightness-110 scale-[1.05] shadow-[0_0_15px_rgba(255,58,58,0.4)]' 
