@@ -10,6 +10,7 @@ interface InviteWheelViewProps {
   setLobbyToast: React.Dispatch<React.SetStateAction<{type: 'success'|'error'|'info', text: string} | null>>;
   nickname: string;
   avatar: string;
+  totalDeposits: number;
 }
 
 const PRIZES = [
@@ -23,7 +24,7 @@ const PRIZES = [
   { id: 8, label: '₹98', value: 98, prob: 1 }
 ];
 
-export default function InviteWheelView({ selectedLang, onBack, balance, setBalance, setLobbyToast, nickname, avatar }: InviteWheelViewProps) {
+export default function InviteWheelView({ selectedLang, onBack, balance, setBalance, setLobbyToast, nickname, avatar, totalDeposits }: InviteWheelViewProps) {
   const [spinsLeft, setSpinsLeft] = useState(1);
   const [isSpinning, setIsSpinning] = useState(false);
   const [rotation, setRotation] = useState(0);
@@ -95,6 +96,10 @@ export default function InviteWheelView({ selectedLang, onBack, balance, setBala
   };
 
   const handleSpin = () => {
+    if (totalDeposits < 200) {
+      setLobbyToast({ type: 'error', text: selectedLang === 'en' ? 'Spin is locked! Deposit ₹200 to unlock.' : 'स्पिन लॉक है! अनलॉक करने के लिए ₹200 जमा करें।' });
+      return;
+    }
     if (spinsLeft <= 0) {
       setLobbyToast({ type: 'error', text: selectedLang === 'en' ? 'No spins available! Invite friends to get more.' : 'कोई स्पिन उपलब्ध नहीं है! अधिक प्राप्त करने के लिए दोस्तों को आमंत्रित करें।' });
       return;

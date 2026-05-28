@@ -590,6 +590,7 @@ export default function App() {
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('UPI-QR');
   const [isEditingNickname, setIsEditingNickname] = useState(false);
   const [uid, setUid] = useState('000000');
+  const [totalDeposits, setTotalDeposits] = useState(0);
   const [balance, setBalance] = useState(0.00);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [copiedActive, setCopiedActive] = useState(false);
@@ -615,6 +616,7 @@ export default function App() {
             setNickname(userData.nickname || 'Member');
             setUid(userData.uid || '000000');
             setBalance(userData.balance || 0);
+            setTotalDeposits(userData.totalDeposits || 0);
             setUserExp(userData.exp !== undefined ? userData.exp : 0);
             setUserLevel(userData.level || 0);
             setClaimedVipRewards(userData.claimedVipRewards || []);
@@ -1329,27 +1331,18 @@ export default function App() {
   const [wingoSoundEnabled, setWingoSoundEnabled] = useState<boolean>(true);
 
   const countdownAudioRef = useRef<HTMLAudioElement | null>(null);
+  const lastTriggeredPeriodRef = useRef<string | null>(null);
 
   useEffect(() => {
     const audio = new Audio("https://www.image2url.com/r2/default/audio/1779933779792-380c25a2-37af-49eb-b4ea-7209307b1162.mp3");
-    audio.preload = "auto";
+    audio.preload = "metadata";
     countdownAudioRef.current = audio;
 
     return () => {
       audio.pause();
+      audio.src = ""; // Clear source to help release resources
     };
   }, []);
-
-  const unlockAudio = () => {
-    if (countdownAudioRef.current) {
-      countdownAudioRef.current.play()
-        .then(() => {
-          countdownAudioRef.current?.pause();
-          countdownAudioRef.current!.currentTime = 0;
-        })
-        .catch((e) => console.log("Audio unlock muted/blocked:", e));
-    }
-  };
 
   const toggleWingoSound = () => {
     setWingoSoundEnabled(prev => {
@@ -1405,6 +1398,7 @@ export default function App() {
   const [wingoHistory, setWingoHistory] = useState<{ [key: string]: { period: string; number: number; color: 'Green' | 'Red' | 'Violet' | 'Green+Violet' | 'Red+Violet'; size: 'Big' | 'Small'; betAmount?: number; winLoss?: 'Win' | 'Loss' | '-'; timestamp?: string; userChoice?: string | number }[] }>({ '30s': [], '1m': [], '3m': [], '5m': [] });
   const [myWingoBets, setMyWingoBets] = useState<{ [key: string]: { period: string; number?: number; color?: string; size?: string; betAmount: number; winLoss: 'Win' | 'Loss' | '-'; timestamp: string; userChoice: string | number; resolved: boolean }[] }>({ '30s': [], '1m': [], '3m': [], '5m': [] });
   const [expandedBetKey, setExpandedBetKey] = useState<string | null>(null);
+
 
   const syncUserBetsHistory = async (userUid: string) => {
     if (!db) return;
@@ -1493,8 +1487,12 @@ export default function App() {
   const activeTimer = wingoTimers[activeWingoRoom || '30s'] || 0;
   const isBettingDisabled = activeTimer <= 5 && activeTimer > 0;
 
-  // Keep track of the active countdown sequence using unique room and period keys to prevent stuttering/jumping and play the full sound smoothly
-  const lastTriggeredPeriodRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (showWingoBetModal && activeTimer <= 5 && activeTimer > 0) {
+      setShowWingoBetModal(false);
+    }
+  }, [activeTimer, showWingoBetModal]);
 
   useEffect(() => {
     const isWingoActive = 
@@ -1514,7 +1512,7 @@ export default function App() {
     const audio = countdownAudioRef.current;
     const room = activeWingoRoom!;
 
-    if (activeTimer <= 5) {
+    if (activeWingoRoom && activeTimer <= 5 && activeTimer > 0) {
       // Get unique period code for the current game round of this room to track triggers precisely
       const roomHistoryList = wingoHistory[room] || [];
       const lastPeriodObj = roomHistoryList.find((h: any) => h.number !== -1) || roomHistoryList[0];
@@ -2103,7 +2101,6 @@ export default function App() {
         backgroundColor: isLoggedIn ? '#260506' : '#0c0a0a',
         fontFamily: "'Inter', sans-serif"
       }}
-      onClick={unlockAudio}
     >
       {/* 1. Deep Elegant Casino Backdrop Layer */}
       <div 
@@ -5342,7 +5339,7 @@ export default function App() {
 
               </motion.div>
             ) : currentTab === 'earn' ? (
-              <InvitationBonusView selectedLang={selectedLang} onClose={() => {}} />
+              <InvitationBonusView uid={uid} selectedLang={selectedLang} onClose={() => {}} />
             ) : currentTab === 'wheel' ? (
               <InviteWheelView 
                 selectedLang={selectedLang} 
@@ -5351,6 +5348,7 @@ export default function App() {
                 setLobbyToast={setLobbyToast} 
                 nickname={nickname}
                 avatar={avatar}
+                totalDeposits={totalDeposits}
               />
             ) : (
               <motion.div
@@ -6251,6 +6249,7 @@ export default function App() {
           <InvitationBonusView 
             onClose={() => setShowInvitationBonus(false)} 
             selectedLang={selectedLang}
+            uid={uid}
           />
         )}
       </AnimatePresence>

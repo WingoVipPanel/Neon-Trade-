@@ -5,6 +5,7 @@ import InvitationRecordView from './InvitationRecordView';
 interface InvitationBonusViewProps {
   onClose: () => void;
   selectedLang: 'en' | 'hi';
+  uid: string;
 }
 
 const BONUS_TIERS = [
@@ -22,7 +23,7 @@ const BONUS_TIERS = [
   { id: 12, reward: 300000, invitees: 5000, recharge: 1200 },
 ];
 
-export default function InvitationBonusView({ onClose, selectedLang }: InvitationBonusViewProps) {
+export default function InvitationBonusView({ onClose, selectedLang, uid }: InvitationBonusViewProps) {
   const [showRecordView, setShowRecordView] = useState(false);
   // Reset invitation stats to 0 as requested by user
   const userInvitees = 0;
@@ -98,7 +99,7 @@ export default function InvitationBonusView({ onClose, selectedLang }: Invitatio
           <div className="bg-[#1b0809] p-3 rounded-xl border border-white/5 flex flex-col gap-3">
             <div className="flex items-center justify-between bg-black/40 rounded-lg p-2.5">
               <span className="text-[#ffd275] font-mono text-xs font-black truncate max-w-[200px]">
-                https://neontrade.app?ref=8923A4
+                https://neontrade.app?ref={uid}
               </span>
               <div className="bg-[#341113] p-1.5 rounded cursor-pointer hover:bg-[#ff3a3a]/20 transition-colors">
                 <svg className="w-4 h-4 text-[#ffd275]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
@@ -110,7 +111,7 @@ export default function InvitationBonusView({ onClose, selectedLang }: Invitatio
                   {selectedLang === 'en' ? 'Invite Code' : 'आमंत्रण कोड'}
                 </span>
                 <span className="text-white font-mono text-sm font-black">
-                  8923A4
+                  {uid}
                 </span>
               </div>
               <div className="bg-[#341113] p-1.5 rounded cursor-pointer hover:bg-[#ff3a3a]/20 transition-colors">
