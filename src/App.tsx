@@ -5726,6 +5726,8 @@ export default function App() {
                           <img
                             src={url}
                             alt={`Avatar Option ${idx + 1}`}
+                            loading="eager"
+                            decoding="sync"
                             className={`h-full w-full rounded-full object-cover border-2 transition-all duration-200 ${
                               isSelected 
                                 ? 'border-[#ff3a3a] filter brightness-110 scale-[1.05] shadow-[0_0_15px_rgba(255,58,58,0.4)]' 
