@@ -79,14 +79,14 @@ import casinoBg from './assets/images/casino_bg_1779214894050.png';
 
 // 8 Indian Casino style realistic player avatars shown in the user's reference picture
 const AVAILABLE_AVATARS = [
-  "https://api.dicebear.com/7.x/lorelei/svg?seed=Olivia&backgroundColor=ffd275",      // Beautiful golden style cartoon queen
-  "https://api.dicebear.com/7.x/lorelei/svg?seed=Aria&backgroundColor=ffaa00",        // Elegant sunset style game character
-  "https://api.dicebear.com/7.x/lorelei/svg?seed=Alexander&backgroundColor=30d158",   // Handsome lucky green game boy
-  "https://api.dicebear.com/7.x/lorelei/svg?seed=Sophia&backgroundColor=0a84ff",      // Royal sapphire game model
-  "https://api.dicebear.com/7.x/lorelei/svg?seed=Caleb&backgroundColor=bf5af2",       // Luxury amethyst style boy
-  "https://api.dicebear.com/7.x/lorelei/svg?seed=Elena&backgroundColor=ff453a",       // Fiery ruby style high-roller girl
-  "https://api.dicebear.com/7.x/lorelei/svg?seed=Marcus&backgroundColor=120d0d",      // Sleek onyx black modern gamer
-  "https://api.dicebear.com/7.x/lorelei/svg?seed=Lucas&backgroundColor=41b0df"        // Cool neon aqua gamer champ
+  "https://api.dicebear.com/7.x/lorelei/png?seed=Olivia&backgroundColor=ffd275",      
+  "https://api.dicebear.com/7.x/lorelei/png?seed=Aria&backgroundColor=ffaa00",        
+  "https://api.dicebear.com/7.x/lorelei/png?seed=Alexander&backgroundColor=30d158",   
+  "https://api.dicebear.com/7.x/lorelei/png?seed=Sophia&backgroundColor=0a84ff",      
+  "https://api.dicebear.com/7.x/lorelei/png?seed=Caleb&backgroundColor=bf5af2",       
+  "https://api.dicebear.com/7.x/lorelei/png?seed=Elena&backgroundColor=ff453a",       
+  "https://api.dicebear.com/7.x/lorelei/png?seed=Marcus&backgroundColor=120d0d",      
+  "https://api.dicebear.com/7.x/lorelei/png?seed=Lucas&backgroundColor=41b0df"        
 ];
 
 const VIP_ICONS: { [key: number]: string } = {
@@ -595,9 +595,9 @@ export default function App() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [copiedActive, setCopiedActive] = useState(false);
   const [currentTab, setCurrentTab] = useState<'home' | 'promo' | 'wheel' | 'earn' | 'mine'>('home');
-  const [avatar, setAvatar] = useState('https://api.dicebear.com/7.x/lorelei/svg?seed=Olivia&backgroundColor=ffd275');
+  const [avatar, setAvatar] = useState('https://api.dicebear.com/7.x/lorelei/png?seed=Olivia&backgroundColor=ffd275');
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
-  const [tempSelectedAvatar, setTempSelectedAvatar] = useState('https://api.dicebear.com/7.x/lorelei/svg?seed=Olivia&backgroundColor=ffd275');
+  const [tempSelectedAvatar, setTempSelectedAvatar] = useState('https://api.dicebear.com/7.x/lorelei/png?seed=Olivia&backgroundColor=ffd275');
 
   // Load user data from Firestore on mount with local storage offline fallback
   useEffect(() => {
