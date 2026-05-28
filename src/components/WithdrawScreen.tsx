@@ -18,7 +18,7 @@ import {
   Copy
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, updateDoc, serverTimestamp, getDoc, setDoc } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import SupportChat from './SupportChat';
 
@@ -235,7 +235,7 @@ export default function WithdrawScreen({ onClose, balance, onRefresh, selectedLa
       return;
     }
     if (amt > balance) {
-      setErrors(isEn ? 'Insufficient balance available' : 'अपर्याप्त उपलब्ध शेष राशि');
+      setErrors(isEn ? 'Insufficient balance' : 'अपर्याप्त शेष');
       return;
     }
 
@@ -258,18 +258,33 @@ export default function WithdrawScreen({ onClose, balance, onRefresh, selectedLa
     setTimeout(async () => {
       try {
         const user = auth.currentUser;
+        if (!user) throw new Error("No authenticated user");
+
         const newBalance = balance - amt;
 
-        if (user) {
-          await updateDoc(doc(db, 'users', user.uid), {
-            balance: newBalance,
-            updatedAt: serverTimestamp()
-          });
+        // Fetch user profile info
+        let userNickname = 'User';
+        let userAvatar = '';
+        let userShortUid = '';
+        try {
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          if (userDoc.exists()) {
+            userNickname = userDoc.data().nickname || 'User';
+            userAvatar = userDoc.data().avatar || '';
+            userShortUid = userDoc.data().uid || '';
+          }
+        } catch (err) {
+          console.error("Error fetching user profile for WD write:", err);
         }
+
+        await updateDoc(doc(db, 'users', user.uid), {
+          balance: newBalance,
+          updatedAt: serverTimestamp()
+        });
         
         // Add record
         const maskDetails = paymentMethod === 'BankCard' 
-          ? `${savedBank?.bankName} (..${savedBank?.accountNumber.slice(-4)})`
+          ? `${savedBank?.bankName} (Ac: ..${savedBank?.accountNumber.slice(-4)})`
           : savedUpi?.upiId || '';
 
         const now = new Date();
@@ -284,6 +299,21 @@ export default function WithdrawScreen({ onClose, balance, onRefresh, selectedLa
           status: 'Pending',
           time: formattedDate
         };
+
+        // Write to Firestore withdrawRequests for full-stack admin panel approval
+        await setDoc(doc(db, 'withdrawRequests', newRecord.id), {
+          id: newRecord.id,
+          userId: user.uid,
+          nickname: userNickname,
+          avatar: userAvatar,
+          uid: userShortUid || user.uid.substring(0, 8),
+          amount: amt,
+          method: paymentMethod,
+          accountDetails: maskDetails,
+          status: 'pending',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
 
         const updatedHistory = [newRecord, ...historyRecords];
         setHistoryRecords(updatedHistory);
@@ -522,6 +552,11 @@ export default function WithdrawScreen({ onClose, balance, onRefresh, selectedLa
              </div>
           </div>
 
+          {errors && (
+            <div className="text-red-500 font-bold text-xs text-center p-2 bg-red-900/20 rounded-lg border border-red-500/20">
+              {errors}
+            </div>
+          )}
           <button 
             disabled={isProcessing}
             onClick={handleWithdrawAction}

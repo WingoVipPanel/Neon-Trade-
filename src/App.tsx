@@ -34,7 +34,9 @@ import {
   Download,
   Trash2,
   Inbox,
-  Info
+  Info,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 
 import { 
@@ -555,7 +557,7 @@ export default function App() {
   // LOGGED IN DASHBOARD STATES
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [showAdminView, setShowAdminView] = useState(true);
+  const [showAdminView, setShowAdminView] = useState(false);
   const [userExp, setUserExp] = useState(0);
   const [userLevel, setUserLevel] = useState(0);
   const [claimedVipRewards, setClaimedVipRewards] = useState<number[]>([]);
@@ -573,6 +575,8 @@ export default function App() {
   const [newPasswordInput, setNewPasswordInput] = useState('');
   const [confirmPasswordInput, setConfirmPasswordInput] = useState('');
   const [giftCodeInput, setGiftCodeInput] = useState('');
+  const [claimingGift, setClaimingGift] = useState(false);
+  const [claimedGifts, setClaimedGifts] = useState<{giftCode: string, amount: number, claimedAt: string}[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [nickname, setNickname] = useState('MemberNNGDQTST');
@@ -701,6 +705,46 @@ export default function App() {
 
     return () => unsubscribe();
   }, []);
+
+  // Synchronize claimed gifts and real-time user balance from Firestore
+  useEffect(() => {
+    if (!isLoggedIn || !db || !auth.currentUser) {
+      setClaimedGifts([]);
+      return;
+    }
+    const qGifts = query(
+      collection(db, 'giftClaims'),
+      where('userId', '==', auth.currentUser.uid)
+    );
+    const unsubGifts = onSnapshot(qGifts, (snapshot) => {
+      const claims = snapshot.docs.map(docSnap => ({
+        giftCode: docSnap.data().giftCode || '',
+        amount: Number(docSnap.data().amount || 0),
+        claimedAt: docSnap.data().claimedAt || ''
+      }));
+      // Sort claims descending by claimedAt if present
+      claims.sort((a, b) => b.claimedAt.localeCompare(a.claimedAt));
+      setClaimedGifts(claims);
+    }, (err) => {
+      console.warn("giftClaims snapshot listening error:", err);
+    });
+
+    const unsubUser = onSnapshot(doc(db, 'users', auth.currentUser.uid), (docSnap) => {
+      if (docSnap.exists()) {
+        const userData = docSnap.data();
+        setBalance(userData.balance || 0);
+        setNickname(userData.nickname || 'Member');
+        setAvatar(userData.avatar || userData.avatarURL || '');
+      }
+    }, (err) => {
+      console.warn("user snapshot listening error:", err);
+    });
+
+    return () => {
+      unsubGifts();
+      unsubUser();
+    };
+  }, [isLoggedIn, db]);
 
   // Synchronize dynamic state mutations back to local_users storage for offline resiliency
   useEffect(() => {
@@ -1282,6 +1326,43 @@ export default function App() {
   };
 
   // WINGO INTERACTIVE SYSTEMS STATE
+  const [wingoSoundEnabled, setWingoSoundEnabled] = useState<boolean>(true);
+
+  const countdownAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    const audio = new Audio("https://www.image2url.com/r2/default/audio/1779933779792-380c25a2-37af-49eb-b4ea-7209307b1162.mp3");
+    audio.preload = "auto";
+    countdownAudioRef.current = audio;
+
+    return () => {
+      audio.pause();
+    };
+  }, []);
+
+  const unlockAudio = () => {
+    if (countdownAudioRef.current) {
+      countdownAudioRef.current.play()
+        .then(() => {
+          countdownAudioRef.current?.pause();
+          countdownAudioRef.current!.currentTime = 0;
+        })
+        .catch((e) => console.log("Audio unlock muted/blocked:", e));
+    }
+  };
+
+  const toggleWingoSound = () => {
+    setWingoSoundEnabled(prev => {
+      const newVal = !prev;
+      try {
+        localStorage.setItem('wingo_sound_enabled', String(newVal));
+      } catch (e) {
+        console.warn(e);
+      }
+      return newVal;
+    });
+  };
+
   const [wingoTimers, setWingoTimers] = useState<{ [key: string]: number }>({
     '30s': 28,
     '1m': 54,
@@ -1411,6 +1492,66 @@ export default function App() {
 
   const activeTimer = wingoTimers[activeWingoRoom || '30s'] || 0;
   const isBettingDisabled = activeTimer <= 5 && activeTimer > 0;
+
+  // Keep track of the active countdown sequence using unique room and period keys to prevent stuttering/jumping and play the full sound smoothly
+  const lastTriggeredPeriodRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const isWingoActive = 
+      currentTab === 'home' && 
+      activeWingoRoom && 
+      ['30s', '1m', '3m', '5m'].includes(activeWingoRoom);
+
+    if (!isWingoActive || !wingoSoundEnabled || !countdownAudioRef.current) {
+      if (countdownAudioRef.current) {
+        countdownAudioRef.current.pause();
+        countdownAudioRef.current.currentTime = 0;
+      }
+      lastTriggeredPeriodRef.current = null;
+      return;
+    }
+
+    const audio = countdownAudioRef.current;
+    const room = activeWingoRoom!;
+
+    if (activeTimer <= 5) {
+      // Get unique period code for the current game round of this room to track triggers precisely
+      const roomHistoryList = wingoHistory[room] || [];
+      const lastPeriodObj = roomHistoryList.find((h: any) => h.number !== -1) || roomHistoryList[0];
+      let periodCode = 'fallback_' + room;
+      if (lastPeriodObj) {
+        try {
+          const lastPeriod = lastPeriodObj.period;
+          const basePart = lastPeriod.substring(0, 13);
+          const seqPart = lastPeriod.substring(13);
+          const nextSeq = String(parseInt(seqPart) + 1).padStart(4, '0');
+          periodCode = basePart + nextSeq;
+        } catch (e) {
+          periodCode = 'fallback_' + room;
+        }
+      }
+
+      const currentKey = `${room}_${periodCode}`;
+
+      if (lastTriggeredPeriodRef.current !== currentKey) {
+        lastTriggeredPeriodRef.current = currentKey;
+        // Stop any currently playing audio so it resets properly when starting a new round or switching rooms
+        audio.pause();
+        audio.currentTime = 0;
+        audio.play().catch(e => console.warn("Countdown audio play blocked:", e));
+      } else {
+        // Already triggered for this round; let it play naturally to conclusion without resetting or seeking!
+        if (audio.paused) {
+          audio.play().catch(e => console.warn("Countdown audio resume blocked:", e));
+        }
+      }
+    } else {
+      // Not in countdown/drawing zone (betting time), pause and reset
+      audio.pause();
+      audio.currentTime = 0;
+      lastTriggeredPeriodRef.current = null;
+    }
+  }, [activeTimer, activeWingoRoom, currentTab, wingoSoundEnabled, wingoHistory]);
 
   const handleWingoBetPlace = (passedOption?: any) => {
     const activeTimer = wingoTimers[activeWingoRoom || '30s'] || 0;
@@ -1804,7 +1945,17 @@ export default function App() {
             await signInWithEmailAndPassword(auth, phoneNumber + "@neon.trade", password);
           } catch (signInErr: any) {
             // If the user does not exist in Auth, create it on-the-fly
-            if (signInErr.code === 'auth/user-not-found' || signInErr.code === 'auth/invalid-credential' || signInErr.code === 'auth/wrong-password') {
+            const errCode = signInErr.code || '';
+            const errMessage = signInErr.message || '';
+            const isMissingOrInvalid = 
+              errCode === 'auth/user-not-found' || 
+              errCode === 'auth/invalid-credential' || 
+              errCode === 'auth/wrong-password' ||
+              errMessage.includes('auth/invalid-credential') ||
+              errMessage.includes('auth/user-not-found') ||
+              errMessage.includes('auth/wrong-password');
+
+            if (isMissingOrInvalid) {
               console.log('Admin Auth account not found or invalid, trying registration...');
               try {
                 const userCredential = await createUserWithEmailAndPassword(auth, phoneNumber + "@neon.trade", password);
@@ -1829,7 +1980,9 @@ export default function App() {
                 await setDoc(doc(db, 'users_by_phone', phoneNumber), { uid: firebaseUid });
               } catch (regErr: any) {
                 // If register fails because mail is in use, fallback to sign in (or print info)
-                if (regErr.code === 'auth/email-already-in-use') {
+                const regCode = regErr.code || '';
+                const regMsg = regErr.message || '';
+                if (regCode === 'auth/email-already-in-use' || regMsg.includes('auth/email-already-in-use')) {
                   throw signInErr; // throw original signIn error
                 } else {
                   throw regErr;
@@ -1857,14 +2010,33 @@ export default function App() {
       }
     } catch (error: any) {
       console.error('Auth handler error:', error);
-      let errMsg = error.message;
-      if (error.code === 'auth/email-already-in-use') {
+      let errMsg = error.message || 'Authentication error happened';
+
+      const errCode = error.code || '';
+      const errMsgStr = error.message || '';
+
+      const isEmailInUse = errCode === 'auth/email-already-in-use' || errMsgStr.includes('auth/email-already-in-use');
+      const isInvalidCreds = 
+        errCode === 'auth/invalid-credential' || 
+        errCode === 'auth/wrong-password' || 
+        errCode === 'auth/user-not-found' || 
+        errMsgStr.includes('auth/invalid-credential') || 
+        errMsgStr.includes('auth/wrong-password') || 
+        errMsgStr.includes('auth/user-not-found');
+      const isNotAllowed = errCode === 'auth/operation-not-allowed' || errMsgStr.includes('auth/operation-not-allowed');
+
+      if (isEmailInUse) {
         errMsg = selectedLang === 'en' ? 'This phone number is already registered.' : 'यह फोन नंबर पहले से पंजीकृत है।';
-      } else if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found') {
-        errMsg = selectedLang === 'en' ? 'Invalid phone number or password.' : 'अमान्य फोन नंबर या पासवर्ड।';
-      } else if (error.code === 'auth/operation-not-allowed') {
-        errMsg = selectedLang === 'en' ? 'Registration/Login is currently disabled. Please enable Email/Password auth in your Firebase Console.' : 'पंजीकरण/लॉगिन वर्तमान में अक्षम है। कृपया फायरबेस कंसोल में ईमेल/पासवर्ड प्रमाणीकरण सक्षम करें।';
+      } else if (isInvalidCreds) {
+        errMsg = selectedLang === 'en' 
+          ? 'Invalid phone number or password. If you are a new user, please switch to Register mode first.' 
+          : 'अमान्य फोन नंबर या पासवर्ड। यदि आप नए उपयोगकर्ता हैं, तो कृपया पहले रजिस्टर मोड पर जाएँ।';
+      } else if (isNotAllowed) {
+        errMsg = selectedLang === 'en' 
+          ? 'Registration/Login is currently disabled. Please enable Email/Password auth in your Firebase Console.' 
+          : 'पंजीकरण/लॉगिन वर्तमान में अक्षम है। कृपया फायरबेस कंसोल में ईमेल/पासवर्ड प्रमाणीकरण सक्षम करें।';
       }
+
       setLoading(false);
       setFormFeedback({ type: 'error', message: errMsg });
     }
@@ -1926,11 +2098,12 @@ export default function App() {
 
   return (
     <div 
-      className={`relative min-h-screen w-full flex flex-col items-center select-none overflow-x-hidden pt-0 ${activeWingoRoom ? 'pb-0' : 'pb-4'}`}
+      className={`relative min-h-screen w-full flex flex-col items-center select-none overflow-x-hidden pt-0 ${activeWingoRoom ? 'pb-0' : 'pb-32'}`}
       style={{
         backgroundColor: isLoggedIn ? '#260506' : '#0c0a0a',
         fontFamily: "'Inter', sans-serif"
       }}
+      onClick={unlockAudio}
     >
       {/* 1. Deep Elegant Casino Backdrop Layer */}
       <div 
@@ -2705,28 +2878,119 @@ export default function App() {
                         </div>
 
                         <button 
-                          onClick={() => {
-                            if (!giftCodeInput || giftCodeInput.length < 4) {
+                          disabled={claimingGift}
+                          onClick={async () => {
+                            if (!isLoggedIn || !auth.currentUser) {
+                              setLobbyToast({
+                                type: 'error',
+                                text: selectedLang === 'en' ? 'Please log in first' : 'कृपया पहले लॉग इन करें'
+                              });
+                              return;
+                            }
+                            const code = giftCodeInput.trim().toUpperCase();
+                            if (!code || code.length < 3) {
                               setLobbyToast({
                                 type: 'error',
                                 text: selectedLang === 'en' ? 'Invalid gift code format' : 'अमान्य उपहार कोड प्रारूप'
                               });
                               return;
                             }
+
+                            setClaimingGift(true);
                             setLobbyToast({
                               type: 'success',
-                              text: selectedLang === 'en' ? 'Validating your gift reward...' : 'आपके उपहार पुरस्कार की पुष्टि की जा रही है...'
+                              text: selectedLang === 'en' ? 'Validating gift code...' : 'गिफ्ट कोड सत्यापित किया जा रहा है...'
                             });
-                            setTimeout(() => {
+
+                            try {
+                              const codeRef = doc(db, 'giftCodes', code);
+                              const codeSnap = await getDoc(codeRef);
+                              if (!codeSnap.exists()) {
+                                setLobbyToast({
+                                  type: 'error',
+                                  text: selectedLang === 'en' ? 'Gift code is invalid or expired' : 'गिफ्ट कोड अमान्य है या समाप्त हो गया है'
+                                });
+                                return;
+                              }
+
+                              const giftData = codeSnap.data();
+                              const giftAmount = parseFloat(giftData.amount || '0');
+                              const giftType = giftData.type || 'standard';
+                              const minDepositReq = parseFloat(giftData.minDeposit || '0');
+
+                              // Check duplicate claim
+                              const claimId = `${auth.currentUser.uid}_${code}`;
+                              const claimRef = doc(db, 'giftClaims', claimId);
+                              const claimSnap = await getDoc(claimRef);
+                              if (claimSnap.exists()) {
+                                setLobbyToast({
+                                  type: 'error',
+                                  text: selectedLang === 'en' ? 'This gift code has already been redeemed' : 'यह उपहार कोड पहले ही उपयोग किया जा चुका है'
+                                });
+                                return;
+                              }
+
+                              // Check user total deposits requirement
+                              const userRef = doc(db, 'users', auth.currentUser.uid);
+                              const userSnap = await getDoc(userRef);
+                              if (!userSnap.exists()) throw new Error("User document not found");
+                              
+                              const userData = userSnap.data();
+                              const userTotalDeposits = parseFloat(userData.totalDeposits || '0');
+
+                              if (giftType === 'deposit_lock' && userTotalDeposits < minDepositReq) {
+                                setLobbyToast({
+                                  type: 'error',
+                                  text: selectedLang === 'en' 
+                                    ? `This code unlocks at automatic deposit of ₹${minDepositReq}. (You have: ₹${userTotalDeposits})`
+                                    : `यह कोड अनलॉक करने के लिए ₹${minDepositReq} स्वचालित जमा आवश्यक है। (आपके पास: ₹${userTotalDeposits})`
+                                });
+                                return;
+                              }
+
+                              // Core balance credit transaction
+                              await runTransaction(db, async (transaction) => {
+                                const uSnap = await transaction.get(userRef);
+                                if (!uSnap.exists()) throw new Error("User not found");
+                                const currentBalance = parseFloat(uSnap.data().balance || '0');
+
+                                // Create claimed record
+                                transaction.set(claimRef, {
+                                  userId: auth.currentUser?.uid,
+                                  userUid: uid,
+                                  giftCode: code,
+                                  amount: giftAmount,
+                                  claimedAt: new Date().toISOString()
+                                });
+
+                                // Modify structural balance
+                                transaction.update(userRef, {
+                                  balance: currentBalance + giftAmount
+                                });
+                              });
+
+                              setLobbyToast({
+                                type: 'success',
+                                text: selectedLang === 'en' 
+                                  ? `Success! You claimed ₹${giftAmount.toFixed(2)} gift bonus!` 
+                                  : `सफलतापूर्वक ₹${giftAmount.toFixed(2)} उपहार पुरस्कार प्राप्त किया!`
+                              });
+                              setGiftCodeInput('');
+                            } catch (e: any) {
+                              console.error("Gift Claim Error:", e);
                               setLobbyToast({
                                 type: 'error',
-                                text: selectedLang === 'en' ? 'This gift code has already been redeemed' : 'यह उपहार कोड पहले ही उपयोग किया जा चुका है'
+                                text: selectedLang === 'en' 
+                                  ? 'Error claiming gift code: ' + e.message 
+                                  : 'गिफ्ट कोड के दावे में त्रुटि: ' + e.message
                               });
-                            }, 1500);
+                            } finally {
+                              setClaimingGift(false);
+                            }
                           }}
-                          className="w-full h-[52px] bg-gradient-to-b from-[#ff3b30] to-[#cc2211] rounded-full text-white font-black text-[16px] shadow-[0_4px_24px_rgba(204,34,17,0.5)] active:scale-[0.98] active:brightness-90 transition-all cursor-pointer flex items-center justify-center uppercase tracking-wide"
+                          className={`w-full h-[52px] bg-gradient-to-b from-[#ff3b30] to-[#cc2211] rounded-full text-white font-black text-[16px] shadow-[0_4px_24px_rgba(204,34,17,0.5)] active:scale-[0.98] active:brightness-90 transition-all cursor-pointer flex items-center justify-center uppercase tracking-wide ${claimingGift ? 'opacity-60 pointer-events-none' : ''}`}
                         >
-                          {selectedLang === 'en' ? 'Confirm' : 'पुष्टि करें'}
+                          {claimingGift ? (selectedLang === 'en' ? 'Claiming...' : 'दावा किया जा रहा है...') : (selectedLang === 'en' ? 'Confirm' : 'पुष्टि करें')}
                         </button>
                       </div>
                     </div>
@@ -2754,17 +3018,39 @@ export default function App() {
                     <span>{selectedLang === 'en' ? 'Bonus' : 'बोनस'}</span>
                   </div>
 
-                  {/* Redemption History List / Empty State */}
-                  <div className="mx-4 bg-[#1c1c1e]/50 border-x border-b border-white/5 rounded-b-xl min-h-[300px] flex flex-col items-center justify-center pt-8 pb-12">
-                     <div className="relative mb-6">
-                        <div className="w-24 h-24 bg-[#2a2a2c] rounded-2xl flex items-center justify-center opacity-40">
-                           <List className="h-10 w-10 text-white/50" />
-                        </div>
-                        <div className="absolute -right-2 -bottom-2 w-10 h-10 bg-[#3a3a3c] rounded-xl flex items-center justify-center shadow-lg border border-white/5 rotate-12">
-                           <Gift className="h-5 w-5 text-red-500/60" />
-                        </div>
-                     </div>
-                     <p className="text-white/30 font-bold text-[15px]">{selectedLang === 'en' ? 'No Records' : 'कोई रिकॉर्ड नहीं'}</p>
+                  {/* Redemption History List / Dynamic State */}
+                  <div className="mx-4 bg-[#1c1c1e]/50 border-x border-b border-white/5 rounded-b-xl min-h-[300px] flex flex-col items-center justify-start py-4">
+                     {claimedGifts.length === 0 ? (
+                       <div className="flex flex-col items-center justify-center py-12">
+                         <div className="relative mb-6">
+                            <div className="w-24 h-24 bg-[#2a2a2c] rounded-2xl flex items-center justify-center opacity-40">
+                               <List className="h-10 w-10 text-white/50" />
+                            </div>
+                            <div className="absolute -right-2 -bottom-2 w-10 h-10 bg-[#3a3a3c] rounded-xl flex items-center justify-center shadow-lg border border-white/5 rotate-12">
+                               <Gift className="h-5 w-5 text-red-500/60" />
+                            </div>
+                         </div>
+                         <p className="text-white/30 font-bold text-[15px]">{selectedLang === 'en' ? 'No Records' : 'कोई रिकॉर्ड नहीं'}</p>
+                       </div>
+                     ) : (
+                       <div className="w-full divide-y divide-white/5 px-4 space-y-3">
+                         {claimedGifts.map((claim, idx) => (
+                           <div key={idx} className="flex justify-between items-center py-3">
+                             <div className="space-y-1 text-left">
+                               <p className="text-white font-extrabold text-[14px] leading-tight">{claim.giftCode}</p>
+                               <p className="text-[10px] text-white/40">
+                                 {claim.claimedAt ? claim.claimedAt.replace('T', ' ').substring(0, 16) : ''}
+                               </p>
+                             </div>
+                             <div className="text-right">
+                               <span className="text-emerald-400 font-display font-black text-sm">
+                                 +₹{Number(claim.amount).toFixed(2)}
+                               </span>
+                             </div>
+                           </div>
+                         ))}
+                       </div>
+                     )}
                   </div>
 
                 </div>
@@ -2796,68 +3082,68 @@ export default function App() {
                   <div className="w-10 h-10" />
                 </div>
 
-                <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4 text-left scrollbar-hide">
-                  {/* App Preferences card */}
-                  <div className="bg-[#5c1c1e] rounded-xl p-4.5 border border-white/5 space-y-4">
-                    <h3 className="text-white/40 text-[10px] font-black uppercase tracking-widest border-b border-white/5 pb-2">
-                      APP PREFERENCES
+                <div className="flex-1 flex flex-col justify-between px-4 py-6 text-left">
+                  {/* Premium Profile Card */}
+                  <div className="bg-[#5c1c1e] rounded-2xl p-5 border border-white/10 shadow-xl space-y-4">
+                    <h3 className="text-[#ffd275] text-[10px] font-black uppercase tracking-widest border-b border-white/5 pb-2">
+                      {selectedLang === 'en' ? 'ACTIVE SESSION PROFILE' : 'सक्रिय सत्र प्रोफाइल'}
                     </h3>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-bold text-[#fdf6f6]">Sound FX Audios</span>
-                      <button 
-                        onClick={() => {
-                          setLobbyToast({
-                            type: 'success',
-                            text: selectedLang === 'en' ? 'Sound FX activated' : 'ध्वनि प्रभाव सक्रिय'
-                          });
-                        }}
-                        className="w-11 h-6 bg-amber-500 rounded-full p-0.5 transition cursor-pointer flex items-center justify-end"
-                      >
-                        <div className="w-5 h-5 bg-white rounded-full shadow-md" />
-                      </button>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-bold text-[#fdf6f6]">High Performance Mode</span>
-                      <div className="w-11 h-6 bg-neutral-700/60 rounded-full p-0.5 transition flex items-center justify-start opacity-70">
-                        <div className="w-5 h-5 bg-neutral-400 rounded-full" />
+                    
+                    <div className="flex items-center gap-4">
+                      {/* Avatar container with glowing background & active border */}
+                      <div className="relative">
+                        <img 
+                          src={avatar} 
+                          alt="Avatar" 
+                          referrerPolicy="no-referrer"
+                          className="w-16 h-16 rounded-full border-2 border-[#ffd275] bg-[#3d0b0c] p-0.5 object-cover"
+                        />
+                        <div className="absolute bottom-0 right-0 w-4.5 h-4.5 bg-emerald-500 rounded-full border-2 border-[#5c1c1e] flex items-center justify-center" title="Online">
+                          <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                        </div>
+                      </div>
+
+                      <div className="flex-1 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-display font-extrabold text-[16px] text-white tracking-wide">
+                            {nickname}
+                          </span>
+                          <span className="bg-[#ffd275]/10 text-[#ffd275] border border-[#ffd275]/20 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded">
+                            {selectedLang === 'en' ? 'MEMBER' : 'सदस्य'}
+                          </span>
+                        </div>
+                        <p className="font-mono text-xs text-white/50">
+                          UID: <span className="text-[#ffd275]">{uid}</span>
+                        </p>
                       </div>
                     </div>
                   </div>
 
-                  {/* About Certificate section with Indian gaming guidelines certificate */}
-                  <div className="bg-[#5c1c1e] rounded-xl p-4.5 border border-white/5 space-y-3">
-                    <h3 className="text-white/40 text-[10px] font-black uppercase tracking-widest border-b border-white/5 pb-2">
-                      TRUST & CERTIFICATION
-                    </h3>
-                    <div className="flex gap-4 items-start bg-black/15 p-3 rounded-lg border border-white/5">
-                      <span className="text-3xl">🏅</span>
-                      <div className="text-[12px] text-white/70 space-y-1">
-                        <p className="font-extrabold text-[#ffbc0d] uppercase">Indian Online Gaming Certificate</p>
-                        <p className="leading-relaxed">Licensed & verified by All India Gaming Federation (AIGF) rules for compliance with RNG (Random Number Generator) drawing standards.</p>
-                      </div>
+                  {/* Clean regulatory detail if needed, but keeping it empty and centered on logout */}
+                  <div className="flex-1 flex flex-col justify-center items-center py-8">
+                    <div className="w-12 h-12 bg-rose-500/10 rounded-full flex items-center justify-center border border-rose-500/20 mb-3 animate-pulse">
+                      <Lock className="w-5 h-5 text-rose-400" />
                     </div>
-                  </div>
-
-                  {/* Standard support option */}
-                  <div className="bg-[#5c1c1e] rounded-xl p-4.5 border border-white/5 space-y-2">
-                    <h3 className="text-white/40 text-[10px] font-black uppercase tracking-widest border-b border-white/5 pb-2">
-                      REGULATORY COMPLIANCE
-                    </h3>
-                    <p className="text-[11px] text-white/50 leading-relaxed font-sans">
-                      ⚖️ Neon Trade enforces strict age guidelines (18+) for digital skill plays. Our platform relies on robust real-time database endpoints synced inside Cloud Firestores.
+                    <p className="text-[12px] text-white/40 text-center max-w-[250px] leading-relaxed">
+                      {selectedLang === 'en' 
+                        ? 'Your active session is fully encrypted and secured.' 
+                        : 'आपका सक्रिय सत्र पूरी तरह से एन्क्रिप्टेड और सुरक्षित है।'}
                     </p>
                   </div>
 
-                  {/* Logout Action Area at the bottom */}
-                  <div className="pt-6">
+                  {/* Polished Logout Action Area */}
+                  <div className="pb-8">
                     <button 
                       onClick={() => {
                         setShowSettingsOverlay(false);
                         handleLogout();
                       }}
-                      className="w-full bg-rose-500/15 border border-rose-500/25 text-rose-400 font-extrabold text-sm uppercase tracking-widest py-3.5 px-4 rounded-xl cursor-pointer text-center duration-200 active:bg-rose-500/25 active:scale-98"
+                      className="w-full bg-gradient-to-r from-red-600 to-rose-600 text-white font-display font-black text-xs uppercase tracking-widest py-4 px-6 rounded-2xl flex items-center justify-center gap-3 shadow-[0_6px_24px_rgba(220,38,38,0.35)] active:scale-98 active:brightness-90 transition-all cursor-pointer border border-white/10"
                     >
-                      {selectedLang === 'en' ? 'LOGOUT SECURITY SESSION' : 'सुरक्षा सत्र से लॉगआउट करें'}
+                      <LogOut className="w-4.5 h-4.5" />
+                      <span>
+                        {selectedLang === 'en' ? 'LOGOUT SECURITY SESSION' : 'सुरक्षा सत्र से लॉगआउट करें'}
+                      </span>
                     </button>
                   </div>
                 </div>
@@ -3716,7 +4002,9 @@ export default function App() {
 
                             {/* Right Block: Countdown and Period */}
                             <div className="w-1/2 p-2.5 flex flex-col justify-between items-end text-right">
-                              <span className="text-[10px] font-black text-[#4c0f12] uppercase tracking-wider leading-none">Time remaining</span>
+                              <div className="flex items-center gap-1.5 h-[14px] select-none">
+                                <span className="text-[10px] font-black text-[#4c0f12] uppercase tracking-wider leading-none">Time remaining</span>
+                              </div>
                               
                               {/* Ticket styled dark digital countdown blocks */}
                               <div className="flex items-center gap-1 my-1.5 select-none">

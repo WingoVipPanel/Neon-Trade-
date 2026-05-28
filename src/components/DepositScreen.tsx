@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, Headset, History, Check, RefreshCw, Copy, Timer, Smartphone, MessageCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { doc, updateDoc, serverTimestamp, addDoc, collection } from 'firebase/firestore';
+import { doc, updateDoc, serverTimestamp, addDoc, collection, getDoc, query, where, orderBy, onSnapshot } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import SupportChat from './SupportChat';
 
@@ -44,6 +44,80 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
   const [utrError, setUtrError] = useState('');
   const [timeLeft, setTimeLeft] = useState(15 * 60);
   const [selectedPayMethod, setSelectedPayMethod] = useState<'paytm' | 'phonepe'>('paytm');
+  
+  // Real-time deposits history list
+  const [depositHistory, setDepositHistory] = useState<any[]>([]);
+  
+  // Ref for scrolling down to history section
+  const historyRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const user = auth.currentUser;
+    const phone = localStorage.getItem('userPhone');
+    const targetUserId = user?.uid || phone;
+    if (!targetUserId) return;
+
+    // Fetch user's deposit requests in real time
+    const q = query(
+      collection(db, 'depositRequests'),
+      where('userId', '==', targetUserId),
+      orderBy('createdAt', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const historyList: any[] = [];
+      snapshot.forEach((doc) => {
+        historyList.push({ id: doc.id, ...doc.data() });
+      });
+      setDepositHistory(historyList);
+    }, (err) => {
+      console.warn("Error fetching with ordered query, falling back...", err);
+      // Fallback query in case indexes are not fully ready
+      const qFallback = query(
+        collection(db, 'depositRequests'),
+        where('userId', '==', targetUserId)
+      );
+      onSnapshot(qFallback, (snapshot) => {
+        const historyList: any[] = [];
+        snapshot.forEach((doc) => {
+          historyList.push({ id: doc.id, ...doc.data() });
+        });
+        historyList.sort((a, b) => {
+          const tA = a.createdAt?.seconds || 0;
+          const tB = b.createdAt?.seconds || 0;
+          return tB - tA;
+        });
+        setDepositHistory(historyList);
+      });
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const scrollToHistory = () => {
+    historyRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const formatDateTime = (timestamp: any) => {
+    if (!timestamp) return 'Just now';
+    let date: Date;
+    if (typeof timestamp.toDate === 'function') {
+      date = timestamp.toDate();
+    } else if (timestamp.seconds) {
+      date = new Date(timestamp.seconds * 1000);
+    } else {
+      date = new Date(timestamp);
+    }
+    
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  };
 
   useEffect(() => {
     if (!showPayment) {
@@ -87,15 +161,43 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
     const bonusNum = DEPOSIT_AMOUNTS.find(d => d.amount.toString() === amount)?.bonus || 0;
     const finalCredit = depositNum + bonusNum;
     
+    const user = auth.currentUser;
     const savedPhone = localStorage.getItem('userPhone');
     if (savedPhone) {
       try {
+        let nickname = 'User';
+        let avatar = '';
+        let uid = '';
+        if (user) {
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          if (userDoc.exists()) {
+            nickname = userDoc.data().nickname || 'User';
+            avatar = userDoc.data().avatar || '';
+            uid = userDoc.data().uid || '';
+          }
+        }
+
+        // Map method names to professional, short tags like Phonepe_QR, etc.
+        let methodTag = method;
+        if (method === 'PhonePe') {
+          methodTag = 'Phonepe_QR';
+        } else if (method === 'Paytm*QR') {
+          methodTag = 'Paytm_QR';
+        } else if (method === 'UPI-QR' || method === 'UPI*QR') {
+          methodTag = 'UPI_QR';
+        }
+
         await addDoc(collection(db, 'depositRequests'), {
-          userId: savedPhone,
+          userId: user?.uid || savedPhone,
+          phone: savedPhone,
+          nickname: nickname,
+          avatar: avatar,
+          uid: uid || savedPhone,
           amount: depositNum,
           bonus: bonusNum,
           totalAmount: finalCredit,
           utr: utr,
+          method: methodTag,
           status: 'pending',
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
@@ -128,16 +230,16 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
 
   if (showPayment) {
     return (
-      <div className="fixed inset-0 z-50 overflow-y-auto w-full min-h-screen bg-[#2c1012] font-sans flex flex-col mx-auto max-w-[410px] text-white">
+      <div className="fixed inset-0 z-50 overflow-y-auto w-full min-h-screen bg-white font-sans flex flex-col mx-auto max-w-[410px] text-gray-900">
         {/* Header */}
-        <div className="sticky top-0 w-full h-[56px] bg-[#3d0f10] border-b border-white/5 flex items-center px-4 z-20 shadow-md">
-          <button onClick={() => setShowPayment(false)} className="h-10 w-10 flex items-center justify-start cursor-pointer text-white">
+        <div className="sticky top-0 w-full h-[56px] bg-white border-b border-gray-200 flex items-center px-4 z-20 shadow-sm">
+          <button onClick={() => setShowPayment(false)} className="h-10 w-10 flex items-center justify-start cursor-pointer text-gray-900">
             <ChevronLeft className="h-5 w-5" />
           </button>
-          <div className="text-white font-semibold text-[16px] flex-1 text-center font-sans tracking-tight">Payment Page</div>
+          <div className="text-gray-900 font-semibold text-[16px] flex-1 text-center font-sans tracking-tight">Payment Page</div>
           <button 
             onClick={() => setShowChat(true)}
-            className="bg-[#ff4148] text-white text-[11px] font-bold px-3 py-1.5 rounded-full shadow-sm active:scale-95 transition-transform"
+            className="bg-blue-600 text-white text-[11px] font-bold px-3 py-1.5 rounded-full shadow-sm active:scale-95 transition-transform"
           >
             Customer Service
           </button>
@@ -145,17 +247,17 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
 
         <div className="p-4 flex-1">
           {/* Amount Section */}
-          <div className="bg-[#3d0f10] rounded-xl p-5 mb-5 shadow-lg border border-white/5 flex items-center justify-between">
+          <div className="bg-gray-50 rounded-xl p-5 mb-5 border border-gray-200 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="text-[28px] font-bold text-white">₹{parseInt(amount || '0').toFixed(2)}</span>
+              <span className="text-[28px] font-bold text-gray-950">₹{parseInt(amount || '0').toFixed(2)}</span>
               <button 
                 onClick={() => navigator.clipboard.writeText(amount)}
-                className="p-1.5 hover:bg-white/10 rounded-md transition-colors"
+                className="p-1.5 hover:bg-gray-200 rounded-md transition-colors"
               >
-                <Copy className="h-4 w-4 text-white/50" />
+                <Copy className="h-4 w-4 text-gray-400" />
               </button>
             </div>
-            <div className="text-[#ff4148] font-bold text-[15px] tabular-nums tracking-tight">
+            <div className="text-red-500 font-bold text-[15px] tabular-nums tracking-tight">
               {formatTime(timeLeft)}
             </div>
           </div>
@@ -163,38 +265,38 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
           {/* Payment Methods */}
           <div className="mb-6">
             <div className="flex items-center gap-1.5 mb-3">
-              <div className="w-[3px] h-3 bg-[#ff4148] rounded-full"></div>
-              <div className="text-[14px] font-bold text-white/90">Choose a payment method to pay</div>
+              <div className="w-[3px] h-3 bg-blue-600 rounded-full"></div>
+              <div className="text-[14px] font-bold text-gray-900">Choose a payment method to pay</div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <button 
                 onClick={() => setSelectedPayMethod('paytm')}
                 className={`flex flex-col items-center justify-center py-3 rounded-xl border transition-all active:scale-[0.98] relative overflow-hidden ${
                   selectedPayMethod === 'paytm' 
-                  ? 'border-[#ff4148]/50 bg-[#ff4148]/10' 
-                  : 'border-white/5 bg-[#3d0f10]'
+                  ? 'border-blue-500 bg-blue-50' 
+                  : 'border-gray-200 bg-white'
                 }`}
               >
                 <div className="flex items-center gap-1.5 mb-0.5 z-10">
                    <img src="https://i.ibb.co/00V691G/image.png" alt="Paytm" className="w-10 h-4 object-contain" />
-                   <span className="text-[13px] font-bold text-[#00baf2]">Paytm</span>
+                   <span className="text-[13px] font-bold text-sky-600">Paytm</span>
                 </div>
-                <div className="text-[9px] font-semibold text-white/40 z-10">Wake up support</div>
+                <div className="text-[9px] font-semibold text-gray-400 z-10">Wake up support</div>
               </button>
 
               <button 
                 onClick={() => setSelectedPayMethod('phonepe')}
                 className={`flex flex-col items-center justify-center py-3 rounded-xl border transition-all active:scale-[0.98] relative overflow-hidden ${
                   selectedPayMethod === 'phonepe' 
-                  ? 'border-[#ff4148]/50 bg-[#ff4148]/10' 
-                  : 'border-white/5 bg-[#3d0f10]'
+                  ? 'border-blue-500 bg-blue-50' 
+                  : 'border-gray-200 bg-white'
                 }`}
               >
                 <div className="flex items-center gap-1.5 mb-0.5 z-10">
                    <img src="https://i.ibb.co/DH7GQTzk/image.png" alt="PhonePe" className="w-4 h-4 object-contain" />
-                   <span className="text-[13px] font-bold text-[#a259ff]">PhonePe</span>
+                   <span className="text-[13px] font-bold text-violet-600">PhonePe</span>
                 </div>
-                <div className="text-[9px] font-semibold text-white/40 z-10">Wake up support</div>
+                <div className="text-[9px] font-semibold text-gray-400 z-10">Wake up support</div>
               </button>
             </div>
           </div>
@@ -202,12 +304,12 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
           {/* QR Code Section */}
           <div className="mb-6">
             <div className="flex items-center gap-1.5 mb-3">
-              <div className="w-[3px] h-3 bg-[#ff4148] rounded-full"></div>
-              <div className="text-[14px] font-bold text-white/90">Use Mobile Scan code to pay</div>
+              <div className="w-[3px] h-3 bg-blue-600 rounded-full"></div>
+              <div className="text-[14px] font-bold text-gray-900">Use Mobile Scan code to pay</div>
             </div>
             
-            <div className="bg-[#3d0f10] rounded-2xl p-6 border border-white/5 shadow-md text-center">
-              <div className="bg-white p-4 rounded-xl shadow-inner inline-block mb-4 border border-gray-50">
+            <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm text-center">
+              <div className="bg-gray-100 p-4 rounded-xl inline-block mb-4 border border-gray-200">
                 <img 
                   src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(`upi://pay?pa=hyysumitx@fam&am=${amount}&cu=INR`)}`}
                   alt="Payment QR Code"
@@ -215,13 +317,13 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
                 />
               </div>
               
-              <div className="text-[12px] text-white/60 text-left space-y-1.5 max-w-[280px] mx-auto">
+              <div className="text-[12px] text-gray-500 text-left space-y-1.5 max-w-[280px] mx-auto">
                 <p className="flex gap-1.5">
-                  <span className="font-bold">1.</span>
+                  <span className="font-bold text-gray-900">1.</span>
                   Please use another device to scan the QR code with your payment app
                 </p>
                 <p className="flex gap-1.5">
-                  <span className="font-bold">2.</span>
+                  <span className="font-bold text-gray-900">2.</span>
                   If you scan the QR code from this device's gallery, the payment amount may be limited (≤2000).
                 </p>
               </div>
@@ -231,10 +333,10 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
           {/* UTR Input Section */}
           <div className="mb-6 px-1">
             <div className="flex items-center gap-1.5 mb-1.5">
-              <div className="w-[3px] h-3 bg-[#ff4148] rounded-full"></div>
-              <div className="text-[14px] font-bold text-white/90">Input UTR/ Paste UTR</div>
+              <div className="w-[3px] h-3 bg-blue-600 rounded-full"></div>
+              <div className="text-[14px] font-bold text-gray-900">Input UTR/ Paste UTR</div>
             </div>
-            <div className="text-[#ff4148] text-[11px] font-semibold mb-3 leading-tight">If you do not back fill UTR/ paste UTR, 100% will fail.</div>
+            <div className="text-red-500 text-[11px] font-semibold mb-3 leading-tight">If you do not back fill UTR/ paste UTR, 100% will fail.</div>
             
             <div className="relative flex items-center">
               <input 
@@ -246,7 +348,7 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
                   setUtr(val);
                   if (val.length === 12) setUtrError('');
                 }}
-                className="w-full bg-[#3d0f10] rounded-full h-[44px] px-6 text-[14px] font-medium border border-white/10 focus:ring-1 focus:ring-[#ff4148]/30 transition-all text-white placeholder:text-white/20"
+                className="w-full bg-gray-50 rounded-full h-[44px] px-6 text-[14px] font-medium border border-gray-200 focus:ring-1 focus:ring-blue-500 transition-all text-gray-900 placeholder:text-gray-400"
               />
               <button 
                 onClick={async () => {
@@ -276,21 +378,21 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
                     }
                   }
                 }}
-                className="absolute right-1.5 w-[76px] h-[32px] bg-[#ff4148] text-white rounded-full font-bold text-[12px] active:scale-95 transition-transform shadow-lg"
+                className="absolute right-1.5 w-[76px] h-[32px] bg-blue-600 text-white rounded-full font-bold text-[12px] active:scale-95 transition-transform shadow-sm"
               >
                 Paste
               </button>
             </div>
-            {utrError && <div className="text-[#ff4148] text-[10.5px] mt-1.5 ml-4 font-medium italic">{utrError}</div>}
+            {utrError && <div className="text-red-500 text-[10.5px] mt-1.5 ml-4 font-medium italic">{utrError}</div>}
           </div>
 
           {/* Reminder Section */}
-          <div className="bg-[#3d0f10] rounded-xl p-3.5 border border-white/5 shadow-md relative mb-24 mx-1">
+          <div className="bg-gray-50 rounded-xl p-3.5 border border-gray-100 shadow-sm relative mb-24 mx-1">
             <div className="flex items-center gap-1.5 mb-2">
-              <div className="w-[3px] h-3 bg-[#ff4148] rounded-full"></div>
-              <div className="text-[12px] font-bold text-white/90 uppercase tracking-tight">Important reminder:</div>
+              <div className="w-[3px] h-3 bg-blue-600 rounded-full"></div>
+              <div className="text-[12px] font-bold text-gray-900 uppercase tracking-tight">Important reminder:</div>
             </div>
-            <div className="text-[11px] text-white/50 space-y-0.5 font-medium leading-relaxed">
+            <div className="text-[11px] text-gray-500 space-y-0.5 font-medium leading-relaxed">
               <p>1. Do not pay for the same link repeatedly!</p>
               <p>2. Paytm is wake up support!</p>
             </div>
@@ -298,20 +400,20 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
         </div>
 
         {/* Footer Buttons */}
-        <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[410px] grid grid-cols-2 gap-3 px-4 py-3 bg-[#2c1012] z-30 border-t border-white/5 shadow-[0_-4px_12px_rgba(0,0,0,0.1)]">
+        <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[410px] grid grid-cols-2 gap-3 px-4 py-3 bg-white z-30 border-t border-gray-200 shadow-sm">
            <button 
              onClick={() => setShowPayment(false)}
-             className="bg-white/10 text-white font-bold h-[42px] rounded-full text-[13px] active:scale-95 transition-all shadow-sm"
+             className="bg-gray-100 text-gray-900 font-bold h-[42px] rounded-full text-[13px] active:scale-95 transition-all"
            >
              Cancel
            </button>
            <button 
              onClick={handlePaymentSubmit}
              disabled={utr.length < 12}
-             className={`font-bold h-[42px] rounded-full text-[13px] transition-all active:scale-[0.98] shadow-sm ${
+             className={`font-bold h-[42px] rounded-full text-[13px] transition-all active:scale-[0.98] ${
                utr.length === 12 
-               ? 'bg-[#ff4148] text-white' 
-               : 'bg-white/5 text-white/30 cursor-not-allowed'
+               ? 'bg-blue-600 text-white' 
+               : 'bg-gray-200 text-gray-400 cursor-not-allowed'
              }`}
            >
              Submit {utr.length < 12 ? '(UTR not entered)' : ''}
@@ -336,12 +438,19 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
           <ChevronLeft className="h-6 w-6" />
         </button>
         <div className="text-white font-semibold text-[17px] -ml-4">Deposit</div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           <Headset 
             onClick={() => setShowChat(true)}
-            className="h-[22px] w-[22px] text-[#ffccd1] cursor-pointer active:scale-90 transition-transform" 
+            className="h-[20px] w-[20px] text-[#ffccd1] cursor-pointer active:scale-90 transition-transform" 
           />
-          <History className="h-[22px] w-[22px] text-[#ffccd1] cursor-pointer" />
+          <button 
+            type="button"
+            onClick={scrollToHistory}
+            className="text-[12px] font-bold text-[#ffccd1] hover:text-white transition-colors cursor-pointer flex items-center gap-1 active:scale-95 animate-pulse"
+          >
+            <History className="h-4 w-4" />
+            <span>History</span>
+          </button>
         </div>
       </div>
 
@@ -359,23 +468,16 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
               </button>
             </div>
             <div className="text-[#ffccd1] font-bold text-[18px] mt-1 z-10 relative flex items-center">
-               <span className="text-[14px] mr-0.5">₹</span>{balance.toLocaleString('en-IN')}
+               <span className="text-[14px] mr-1">₹</span>{balance.toLocaleString('en-IN')}
             </div>
-            {/* Wallet Watermark */}
-            <svg className="absolute -bottom-2 -left-2 w-16 h-16 opacity-10" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M21 7V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-2h-3c-1.1 0-2-.9-2-2v-6c0-1.1.9-2 2-2h3zm-3 8h4v-6h-4v6z"/>
-            </svg>
           </div>
           <div className="flex-1 rounded-[14px] bg-[#3f1618] p-3 text-white border border-white/5 shadow-md relative overflow-hidden">
             <div className="flex items-center gap-1 opacity-90 text-[13px] font-medium z-10 relative">
               Withdrawable
             </div>
             <div className="text-[#ffccd1] font-bold text-[18px] mt-1 z-10 relative flex items-center">
-               <span className="text-[14px] mr-0.5">₹</span>{balance.toLocaleString('en-IN')}
+               <span className="text-[14px] mr-1">₹</span>{balance.toLocaleString('en-IN')}
             </div>
-            <svg className="absolute -bottom-2 -left-2 w-16 h-16 opacity-10" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M21 7V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-2h-3c-1.1 0-2-.9-2-2v-6c0-1.1.9-2 2-2h3zm-3 8h4v-6h-4v6z"/>
-            </svg>
           </div>
         </div>
 
@@ -399,7 +501,7 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
         {error && <div className="text-red-500 text-[12px] -mt-2 mb-3">{error}</div>}
 
         <div className="text-[13px] text-white/90 font-medium mb-3">
-          Net Amount Received <span className="text-[#ffccd1]">₹{totalAmount > 0 ? totalAmount.toLocaleString('en-IN') : '0'}</span>
+          Net Amount Received <span className="text-[#ffccd1] font-bold">₹{totalAmount > 0 ? totalAmount.toLocaleString('en-IN') : '0'}</span>
         </div>
 
         {/* Deposit Grid */}
@@ -490,26 +592,155 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
                   </div>
                 )}
                 
-                {pay.recommend && (
-                  <div className="absolute -top-2 -left-1 text-[16px]">
-                    👍
-                  </div>
-                )}
               </div>
              );
           })}
         </div>
 
-        {/* Tips section */}
-        <div className="text-white/80 text-[13px] leading-[1.6]">
-          <div className="font-semibold mb-2 text-[14px]">Deposit tips:</div>
-          <p className="mb-3">1.Each deposit will be credited within 1-5 minutes</p>
-          <p className="mb-3">2.After the payment is successful, please return to the Neon Trade deposit page to check your account balance.</p>
-          <p className="mb-4">3.If your deposit does not arrive within 30 minutes, please contact customer service for help.</p>
+        {/* Recharge instructions */}
+        <div className="bg-[#3d0f10] rounded-2xl p-4.5 border border-white/10 shadow-md relative mb-6">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-[16px] select-none text-[#ff9c5a]">📖</span>
+            <span className="text-[14px] font-bold text-white tracking-tight">Recharge instructions</span>
+          </div>
+          <div className="text-[12px] text-white/70 space-y-3 font-medium leading-relaxed">
+            <div className="flex gap-2.5 items-start">
+              <span className="text-[#ff9c5a] font-bold text-[13px] leading-none mt-1">◆</span>
+              <span>If the transfer time is up, please fill out the deposit form again.</span>
+            </div>
+            <div className="flex gap-2.5 items-start">
+              <span className="text-[#ff9c5a] font-bold text-[13px] leading-none mt-1">◆</span>
+              <span>The transfer amount must match the order you created, otherwise the money cannot be credited successfully.</span>
+            </div>
+            <div className="flex gap-2.5 items-start">
+              <span className="text-[#ff9c5a] font-bold text-[13px] leading-none mt-1">◆</span>
+              <span>If you transfer the wrong amount, our company will not be responsible for the lost amount!</span>
+            </div>
+            <div className="flex gap-2.5 items-start">
+              <span className="text-[#ff9c5a] font-bold text-[13px] leading-none mt-1">◆</span>
+              <span className="font-semibold text-white">Note: do not cancel the deposit order after the money has been transferred.</span>
+            </div>
+          </div>
+        </div>
 
-          <div className="font-semibold mb-1 text-[14px]">Important notes:</div>
+        {/* Tips section */}
+        <div className="text-white/80 text-[12.5px] leading-[1.6] mb-8 bg-[#3d0f10]/30 rounded-xl p-4 border border-white/5">
+          <div className="font-bold mb-2 text-[13.5px] text-white">Deposit tips:</div>
+          <p className="mb-2">1. Each deposit will be credited within 1-5 minutes.</p>
+          <p className="mb-2">2. After the payment is successful, please return to the Neon Trade deposit page to check your account balance.</p>
+          <p className="mb-3">3. If your deposit does not arrive within 30 minutes, please contact customer service for help.</p>
+
+          <div className="font-bold mb-1.5 text-[13.5px] text-white mt-4">Important notes:</div>
           <p>Please do not modify the payment amount. Avoid reusing saved QR codes or UPI accounts for multiple payments.</p>
         </div>
+
+        {/* Deposit history Title Header */}
+        <div ref={historyRef} className="flex items-center justify-between mt-8 mb-5 border-t border-white/10 pt-6">
+          <div className="flex items-center gap-2">
+            <span className="text-[17px] select-none text-[#ff4148]">📋</span>
+            <h4 id="deposit-history-title" className="text-[15px] font-bold text-white tracking-wide">Deposit history</h4>
+          </div>
+          <span className="text-[11.5px] text-white/40 font-semibold uppercase tracking-wider">{depositHistory.length} Record(s)</span>
+        </div>
+
+        {/* Deposit history Cards container */}
+        {depositHistory.length === 0 ? (
+          <div className="bg-[#3d0f10]/40 rounded-2xl p-7 text-center border border-white/5 text-white/40 text-[12.5px] font-medium leading-relaxed italic">
+            No deposit history yet. Make a deposit above to get started!
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {depositHistory.map((item) => {
+              const isComplete = item.status === 'approved';
+              const isPending = item.status === 'pending';
+              const isRejected = item.status === 'rejected';
+              
+              let statusText = 'Complete';
+              let statusColor = 'text-emerald-400';
+              if (isPending) {
+                statusText = 'Processing';
+                statusColor = 'text-amber-400';
+              } else if (isRejected) {
+                statusText = 'Rejected';
+                statusColor = 'text-red-400';
+              }
+
+              const displayAmount = Number(item.amount || 0);
+              const displayBonus = Number(item.bonus || 0);
+              const displayTotal = Number(item.totalAmount || (displayAmount + displayBonus));
+              const displayMethod = item.method || 'Phonepe_QR';
+
+              // Unique order number derived securely
+              const orderNo = item.id ? `RC${item.id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 16).toUpperCase()}` : 'RC_PENDING_ORDER';
+
+              return (
+                <div key={item.id} className="relative bg-[#3d0f10] rounded-2xl p-4 border border-white/5 hover:border-white/15 transition-all shadow-md flex flex-col space-y-4 text-left">
+                  {/* Row 1: Deposit Badge and Status */}
+                  <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                    <span className="inline-block px-3 py-1 text-[11px] font-black tracking-wider uppercase bg-emerald-500/10 text-emerald-400 rounded-lg">
+                      Deposit
+                    </span>
+                    <div className="flex items-center gap-1 cursor-pointer">
+                      <span className={`text-[12.5px] font-black tracking-wider ${statusColor}`}>{statusText}</span>
+                      <svg className="w-3.5 h-3.5 text-white/30 transform rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="3">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                      </svg>
+                    </div>
+                  </div>
+
+                  {/* Row 2: Grid and detail metrics */}
+                  <div className="space-y-2.5 text-[12.5px]">
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-white/50 font-medium">Balance</span>
+                      <span className="text-[#ff9c5a] font-black text-[14px]">
+                        ₹{displayAmount.toFixed(2)}
+                        {displayBonus > 0 && (
+                          <span className="text-emerald-400 text-[11px] font-bold ml-1.5" title="Recharge Bonus">
+                            (+₹{displayBonus.toFixed(2)})
+                          </span>
+                        )}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between items-center">
+                      <span className="text-white/50 font-medium">Type</span>
+                      <span className="text-white/80 font-bold bg-white/5 px-2 py-0.5 rounded text-[11.5px] uppercase tracking-wider">
+                        {displayMethod}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between items-center">
+                      <span className="text-white/50 font-medium">Time</span>
+                      <span className="text-white/70 font-mono text-[11px]">
+                        {formatDateTime(item.createdAt)}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between items-center pt-1 border-t border-white/5 mt-1.5">
+                      <span className="text-white/50 font-medium">Order number</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-white/70 font-mono text-[10.5px] select-all uppercase tracking-tight">
+                          {orderNo}
+                        </span>
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(orderNo);
+                            alert('Order number copied to clipboard!');
+                          }}
+                          className="p-1 hover:bg-white/10 rounded text-white/40 hover:text-white transition-colors active:scale-90"
+                          title="Copy Order Number"
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* Bottom spacer */}
         <div className="h-24" />
@@ -517,7 +748,7 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
       </div>
 
       {/* Sticky Bottom button */}
-      <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[410px] px-4 py-4 bg-[#2c1012] z-30">
+      <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[410px] px-4 py-4 bg-[#2c1012] z-30 border-t border-white/5">
          <button 
            onClick={() => !error && amount && setShowPayment(true)}
            disabled={!!error || !amount}
