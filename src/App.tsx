@@ -371,9 +371,9 @@ const renderGlossyBall = (number: number, _color?: string, sizeClass: string = "
       <img
         src={src}
         alt={`ball-${number}`}
+        loading="lazy"
         className="w-full h-full object-contain pointer-events-none drop-shadow-md brightness-105"
         referrerPolicy="no-referrer"
-        loading="eager"
         decoding="async"
         style={{ 
           imageRendering: 'auto',
