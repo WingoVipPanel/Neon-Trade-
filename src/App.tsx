@@ -3993,20 +3993,30 @@ export default function App() {
                       const sStr = (totalSecs % 60).toString().padStart(2, '0');
                       
                       const roomHistoryList = wingoHistory[activeWingoRoom || '30s'] || [];
-                      const lastPeriodObj = roomHistoryList.find((h: any) => h.number !== -1) || roomHistoryList[0];
+                      const lastPeriodObj = roomHistoryList[0];
                       let periodCode = '';
+                      
+                      const generateTodayBase = () => {
+                          const d = new Date();
+                          const yyyymmdd = d.getFullYear().toString() + (d.getMonth() + 1).toString().padStart(2, '0') + d.getDate().toString().padStart(2, '0');
+                          return yyyymmdd + "100010001";
+                      };
+
                       if (lastPeriodObj) {
                         try {
                           const lastPeriod = lastPeriodObj.period;
-                          const basePart = lastPeriod.substring(0, 13);
-                          const seqPart = lastPeriod.substring(13);
-                          const nextSeq = String(parseInt(seqPart) + 1).padStart(4, '0');
-                          periodCode = basePart + nextSeq;
+                          if (lastPeriod.length >= 13) {
+                            const basePart = lastPeriod.substring(0, 13);
+                            const seqPart = lastPeriod.substring(13);
+                            periodCode = basePart + String(parseInt(seqPart) + 1).padStart(lastPeriod.length - 13, '0');
+                          } else {
+                            periodCode = String(BigInt(lastPeriod) + 1n);
+                          }
                         } catch (e) {
-                          periodCode = '20260521100012001';
+                          periodCode = generateTodayBase();
                         }
                       } else {
-                        periodCode = '20260521100012001';
+                        periodCode = generateTodayBase();
                       }
                       return (
                         <div className="px-4 py-1.5 select-none">

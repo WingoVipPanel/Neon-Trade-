@@ -136,32 +136,35 @@ async function startServer() {
   // Load history from Firestore per room
   if (db) {
     try {
-        for (const room of ROOMS) {
-            roomData[room].history = [];
-            console.log(`Fetching drawing history documents for room ${room} sorted by serverTimestamp descending...`);
-            const snap = await db.collection('wingo_history')
-                .where('room', '==', room)
-                .orderBy('serverTimestamp', 'desc')
-                .limit(500)
-                .get();
-                
-            for (const doc of snap.docs) {
-                const data = doc.data();
-                roomData[room].history.push({
+        console.log("Fetching drawing history from Firestore across all rooms...");
+        const snap = await db.collection('wingo_history')
+            .orderBy('serverTimestamp', 'desc')
+            .limit(1000)
+            .get();
+            
+        console.log(`Firestore returned ${snap.docs.length} total records.`);
+        
+        for (const doc of snap.docs) {
+            const data = doc.data();
+            const r = data.room as Room;
+            if (ROOMS.includes(r) && roomData[r].history.length < 500) {
+                roomData[r].history.push({
                     period: data.period,
                     number: data.number,
                     color: data.color,
                     size: data.size
                 });
             }
-            
+        }
+        
+        for (const room of ROOMS) {
             if (roomData[room].history.length > 0) {
                 roomData[room].lastPeriod = roomData[room].history[0].period;
             }
             console.log(`Room [${room}]: Loaded ${roomData[room].history.length} records. Latest period: ${roomData[room].lastPeriod || "None"}`);
         }
     } catch (e) {
-        console.error("Failed to load history from Firestore per room:", e);
+        console.error("Failed to load history from Firestore:", e);
     }
   }
 
@@ -235,6 +238,7 @@ async function startServer() {
       const d = await res.json();
       const list = d?.data?.list || [];
       if (list.length > 0) {
+        // console.log(`API Fetch Success [${room}]: Received ${list.length} records.`);
         // Iterate in reverse to save older records first if they are new to us
         const newRecords: WingoHistoryRecord[] = [];
         for (let i = list.length - 1; i >= 0; i--) {
