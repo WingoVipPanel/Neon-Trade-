@@ -196,18 +196,27 @@ async function startServer() {
 
   let lastErrorLogTime = 0;
   const saveResult = async (room: Room, record: WingoHistoryRecord) => {
+      // Avoid adding the same period twice if multiple calls hit concurrently
+      if (roomData[room].history.some(h => h.period === record.period)) return;
+
       roomData[room].lastPeriod = record.period;
       roomData[room].history.unshift(record);
+      
+      // Limit to 500
+      if (roomData[room].history.length > 500) {
+          roomData[room].history = roomData[room].history.slice(0, 500);
+      }
       
       // Persist to Firestore
       if (db) {
           try {
-              const docRef = await db.collection('wingo_history').add({
+              const docId = `${room}_${record.period}`;
+              await db.collection('wingo_history').doc(docId).set({
                   ...record,
                   room,
                   serverTimestamp: FieldValue.serverTimestamp()
               });
-              console.log(`Saved result to Firestore: room=${room}, period=${record.period}, docId=${docRef.id}`);
+              // console.log(`Saved result to Firestore: room=${room}, period=${record.period}`);
           } catch (e: any) {
               const now = Date.now();
               // Only log the full error every 10 minutes per server instance to avoid spamming "bar bar errors"
@@ -222,25 +231,36 @@ async function startServer() {
 
   const fetchRoomData = async (room: Room) => {
     try {
-      const res = await fetch(urlMap[room], { signal: AbortSignal.timeout(3000) });
+      const res = await fetch(urlMap[room], { signal: AbortSignal.timeout(5000) });
       const d = await res.json();
       const list = d?.data?.list || [];
       if (list.length > 0) {
-        const item = list[0];
-        const num = parseInt(item.number);
-        const record: WingoHistoryRecord = {
-          period: item.issueNumber,
-          number: num,
-          color: getColor(num),
-          size: num >= 5 ? 'Big' : 'Small'
-        };
-        
-        if (record.period !== roomData[room].lastPeriod) {
-          await saveResult(room, record);
+        // Iterate in reverse to save older records first if they are new to us
+        const newRecords: WingoHistoryRecord[] = [];
+        for (let i = list.length - 1; i >= 0; i--) {
+          const item = list[i];
+          const num = parseInt(item.number);
+          const period = item.issueNumber;
+          
+          // Check if this period is already in our history
+          const exists = roomData[room].history.some(h => h.period === period);
+          if (!exists) {
+              const record: WingoHistoryRecord = {
+                period: period,
+                number: num,
+                color: getColor(num),
+                size: num >= 5 ? 'Big' : 'Small'
+              };
+              newRecords.push(record);
+          }
+        }
+
+        for (const record of newRecords) {
+           await saveResult(room, record);
         }
       }
     } catch (e) {
-      console.error(`Failed to fetch ${room}, doing nothing.. or should we fallback now?`);
+      // console.error(`Failed to fetch ${room}`);
     }
   };
 
