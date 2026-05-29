@@ -1405,6 +1405,52 @@ export default function App() {
     }
   });
 
+  // Load global wingoHistory from Firestore on mount
+  useEffect(() => {
+    const fetchGlobalHistory = async () => {
+      try {
+        const rooms = ['30s', '1m', '3m', '5m'];
+        const newHistoryState: any = { '30s': [], '1m': [], '3m': [], '5m': [] };
+        let hasData = false;
+
+        for (const room of rooms) {
+          const q = query(
+            collection(db, 'wingo_history'),
+            where('room', '==', room),
+            orderBy('serverTimestamp', 'desc'),
+            limit(500)
+          );
+          const snap = await getDocs(q);
+          const list: any[] = [];
+          snap.forEach(docSnapshot => {
+            const data = docSnapshot.data();
+            list.push({
+              period: data.period,
+              number: data.number,
+              color: data.color,
+              size: data.size,
+              timestamp: data.serverTimestamp?.toDate?.()?.toISOString() || new Date().toISOString()
+            });
+          });
+
+          if (list.length > 0) {
+            newHistoryState[room] = list;
+            hasData = true;
+          }
+        }
+
+        if (hasData) {
+          setWingoHistory(newHistoryState);
+          localStorage.setItem('wingo_history', JSON.stringify(newHistoryState));
+        }
+      } catch (err) {
+        console.error("Firestore history fetch failed:", err);
+      }
+    };
+
+    fetchGlobalHistory();
+  }, []);
+
   // Save wingoHistory to localStorage on update
   useEffect(() => {
     const isHistoryEmpty = Object.values(wingoHistory).every((h: any) => h.length === 0);
