@@ -1382,6 +1382,7 @@ export default function App() {
   const [wingoRandomizing, setWingoRandomizing] = useState<boolean>(false);
   const [wingoRandomActiveNum, setWingoRandomActiveNum] = useState<number | null>(null);
   const [wingoCategory, setWingoCategory] = useState<'all' | 'wingo' | 'slots' | 'popular'>('all');
+
   const [wingoHistoryTab, setWingoHistoryTab] = useState<'history' | 'chart' | 'myhistory'>('history');
   const [showWingoHowToPlay, setShowWingoHowToPlay] = useState(false);
   const [showAnnouncements, setShowAnnouncements] = useState(false);
@@ -1395,7 +1396,21 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
-  const [wingoHistory, setWingoHistory] = useState<{ [key: string]: { period: string; number: number; color: 'Green' | 'Red' | 'Violet' | 'Green+Violet' | 'Red+Violet'; size: 'Big' | 'Small'; betAmount?: number; winLoss?: 'Win' | 'Loss' | '-'; timestamp?: string; userChoice?: string | number }[] }>({ '30s': [], '1m': [], '3m': [], '5m': [] });
+  const [wingoHistory, setWingoHistory] = useState<{ [key: string]: { period: string; number: number; color: 'Green' | 'Red' | 'Violet' | 'Green+Violet' | 'Red+Violet'; size: 'Big' | 'Small'; betAmount?: number; winLoss?: 'Win' | 'Loss' | '-'; timestamp?: string; userChoice?: string | number }[] }>(() => {
+    try {
+        const saved = localStorage.getItem('wingo_history');
+        return saved ? JSON.parse(saved) : { '30s': [], '1m': [], '3m': [], '5m': [] };
+    } catch(e) {
+        return { '30s': [], '1m': [], '3m': [], '5m': [] };
+    }
+  });
+
+  // Save wingoHistory to localStorage on update
+  useEffect(() => {
+    const isHistoryEmpty = Object.values(wingoHistory).every((h: any) => h.length === 0);
+    if (isHistoryEmpty) return;
+    localStorage.setItem('wingo_history', JSON.stringify(wingoHistory));
+  }, [wingoHistory]);
   const [myWingoBets, setMyWingoBets] = useState<{ [key: string]: { period: string; number?: number; color?: string; size?: string; betAmount: number; winLoss: 'Win' | 'Loss' | '-'; timestamp: string; userChoice: string | number; resolved: boolean }[] }>({ '30s': [], '1m': [], '3m': [], '5m': [] });
   const [expandedBetKey, setExpandedBetKey] = useState<string | null>(null);
 
