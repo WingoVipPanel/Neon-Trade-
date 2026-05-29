@@ -562,6 +562,8 @@ export default function App() {
   const [userLevel, setUserLevel] = useState(0);
   const [claimedVipRewards, setClaimedVipRewards] = useState<number[]>([]);
   const [claimedMonthlyRewards, setClaimedMonthlyRewards] = useState<number[]>([]);
+  const [inviteeCount, setInviteeCount] = useState(0);
+  const [inviteeDepositCount, setInviteeDepositCount] = useState(0);
   const [showVipScreen, setShowVipScreen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showBalanceRecords, setShowBalanceRecords] = useState(false);
@@ -627,6 +629,17 @@ export default function App() {
             if (phone === '7888943984') setIsAdmin(true);
             
             loadUserNotifications(firebaseUser.uid);
+
+            // Fetch invitee counts
+            if (userData.uid) {
+              const qReferrals = query(collection(db, "users"), where("referrer", "==", userData.uid));
+              const snapReferrals = await getDocs(qReferrals);
+              setInviteeCount(snapReferrals.size);
+              
+              // Count those who deposited more than 200
+              const depositedList = snapReferrals.docs.filter(d => (parseFloat(d.data().totalDeposits) || 0) >= 200);
+              setInviteeDepositCount(depositedList.length);
+            }
             
             // Sync to local_users database keyed by UID for isolation
             const localUsers = JSON.parse(localStorage.getItem('local_users') || '{}');
@@ -704,6 +717,13 @@ export default function App() {
         }
       }
     });
+
+    // Capture referral from URL
+    const params = new URLSearchParams(window.location.search);
+    const refCode = params.get('ref') || params.get('inv');
+    if (refCode) {
+      setReferralInput(refCode);
+    }
 
     return () => unsubscribe();
   }, []);
@@ -2076,6 +2096,7 @@ export default function App() {
           claimedMonthlyRewards: [],
           nickname: 'Member' + Math.random().toString(36).substring(7).toUpperCase(),
           avatar: AVAILABLE_AVATARS[0],
+          referrer: referralInput || null,
           registeredAt: new Date().toISOString()
         };
 
@@ -3735,6 +3756,21 @@ export default function App() {
                         </div>
                         <span className="text-[14px] font-semibold text-white/90">
                           {t.liveSupport}
+                        </span>
+                      </div>
+                      <span className="text-neutral-500 text-sm font-black font-mono">➔</span>
+                    </div>
+
+                    <div 
+                      onClick={() => setCurrentTab('earn')}
+                      className="flex items-center justify-between py-3.5 px-3.5 hover:bg-white/5 transition cursor-pointer active:scale-99"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="bg-[#fbbf24]/10 p-2 rounded-xl text-[#fbbf24] border border-[#fbbf24]/5">
+                          <Gift className="h-4.5 w-4.5" />
+                        </div>
+                        <span className="text-[14px] font-semibold text-white/90">
+                          {selectedLang === 'en' ? 'Invitation Bonus' : 'निमंत्रण बोनस'}
                         </span>
                       </div>
                       <span className="text-neutral-500 text-sm font-black font-mono">➔</span>
@@ -5515,7 +5551,13 @@ export default function App() {
 
               </motion.div>
             ) : currentTab === 'earn' ? (
-              <InvitationBonusView uid={uid} selectedLang={selectedLang} onClose={() => {}} />
+              <InvitationBonusView 
+                uid={uid} 
+                selectedLang={selectedLang} 
+                onClose={() => {}} 
+                inviteeCount={inviteeCount}
+                inviteeDepositCount={inviteeDepositCount}
+              />
             ) : currentTab === 'wheel' ? (
               <InviteWheelView 
                 selectedLang={selectedLang} 
@@ -6432,6 +6474,8 @@ export default function App() {
             onClose={() => setShowInvitationBonus(false)} 
             selectedLang={selectedLang}
             uid={uid}
+            inviteeCount={inviteeCount}
+            inviteeDepositCount={inviteeDepositCount}
           />
         )}
       </AnimatePresence>
