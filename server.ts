@@ -31,21 +31,23 @@ async function initFirebase() {
       db = getFirestore();
     }
     
-    // Verification test (swallowed internal error if it fails to not block boot)
+    // Verification test with a timeout to avoid blocking boot
     try {
-      await db.collection('_server_health').doc('boot').set({
+      const healthCheckPromise = db.collection('_server_health').doc('boot').set({
         timestamp: FieldValue.serverTimestamp(),
         status: 'ok',
         databaseId: dbId || '(default)'
       });
+      
+      // Give it 3 seconds or proceed anyway
+      await Promise.race([
+        healthCheckPromise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Firestore health check timeout")), 3000))
+      ]);
       console.log("Firestore Health Check: SUCCESS");
     } catch (e: any) {
-      console.error("Firestore Health Check [Non-Blocking] ERROR:", e.message);
-      if (e.message.includes('PERMISSION_DENIED')) {
-        console.error("CRITICAL: The service account does not have permission to access the Firestore database. Please ensure the project and database ID are correct.");
-      }
-      console.log("Disabling server-side Firestore persistence to avoid further errors.");
-      db = null;
+      console.error("Firestore Health Check ERROR:", e.message);
+      console.log("Proceeding without Firestore verification...");
     }
   } catch (err: any) {
     console.error("CRITICAL Firebase Initialization Error:", err.message);
@@ -234,11 +236,12 @@ async function startServer() {
 
   const fetchRoomData = async (room: Room) => {
     try {
-      const res = await fetch(urlMap[room], { signal: AbortSignal.timeout(5000) });
+      const res = await fetch(urlMap[room], { signal: AbortSignal.timeout(10000) });
+      if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
       const d = await res.json();
       const list = d?.data?.list || [];
       if (list.length > 0) {
-        // console.log(`API Fetch Success [${room}]: Received ${list.length} records.`);
+        console.log(`API Fetch Success [${room}]: Received ${list.length} records. Latest Issue: ${list[0].issueNumber}`);
         // Iterate in reverse to save older records first if they are new to us
         const newRecords: WingoHistoryRecord[] = [];
         for (let i = list.length - 1; i >= 0; i--) {
@@ -263,8 +266,8 @@ async function startServer() {
            await saveResult(room, record);
         }
       }
-    } catch (e) {
-      // console.error(`Failed to fetch ${room}`);
+    } catch (e: any) {
+      console.error(`Failed to fetch ${room}: ${e.message}`);
     }
   };
 

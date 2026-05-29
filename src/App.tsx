@@ -1364,6 +1364,7 @@ export default function App() {
   });
   const [chartPage, setChartPage] = useState(1);
   const [historyPage, setHistoryPage] = useState(1);
+  const [socketConnected, setSocketConnected] = useState(false);
   const [activeWingoRoom, setActiveWingoRoom] = useState<string | null>('30s');
 
   // Reset history page when room changes
@@ -1629,6 +1630,19 @@ export default function App() {
   useEffect(() => {
     let active = true;
     const socket = io();
+
+    socket.on('connect', () => {
+       console.log('Socket connected');
+       if (active) setSocketConnected(true);
+    });
+    socket.on('disconnect', (reason) => {
+       console.log('Socket disconnected:', reason);
+       if (active) setSocketConnected(false);
+    });
+    socket.on('connect_error', (err) => {
+       console.error('Socket connection error:', err);
+       if (active) setSocketConnected(false);
+    });
 
     socket.on('initial_data', (roomData: any) => {
        if (!active) return;
@@ -3997,20 +4011,23 @@ export default function App() {
                       let periodCode = '';
                       
                       const generateTodayBase = () => {
-                          const d = new Date();
-                          const yyyymmdd = d.getFullYear().toString() + (d.getMonth() + 1).toString().padStart(2, '0') + d.getDate().toString().padStart(2, '0');
-                          return yyyymmdd + "100010001";
+                          const now = new Date();
+                          const yyyy = now.getFullYear();
+                          const mm = String(now.getMonth() + 1).padStart(2, '0');
+                          const dd = String(now.getDate()).padStart(2, '0');
+                          return `${yyyy}${mm}${dd}100010001`;
                       };
 
-                      if (lastPeriodObj) {
+                      if (lastPeriodObj && lastPeriodObj.period) {
                         try {
-                          const lastPeriod = lastPeriodObj.period;
+                          const lastPeriod = String(lastPeriodObj.period);
                           if (lastPeriod.length >= 13) {
                             const basePart = lastPeriod.substring(0, 13);
                             const seqPart = lastPeriod.substring(13);
-                            periodCode = basePart + String(parseInt(seqPart) + 1).padStart(lastPeriod.length - 13, '0');
+                            const nextSeq = (parseInt(seqPart) + 1).toString().padStart(lastPeriod.length - 13, '0');
+                            periodCode = basePart + nextSeq;
                           } else {
-                            periodCode = String(BigInt(lastPeriod) + 1n);
+                            periodCode = (BigInt(lastPeriod) + 1n).toString();
                           }
                         } catch (e) {
                           periodCode = generateTodayBase();
@@ -4071,7 +4088,10 @@ export default function App() {
                             {/* Right Block: Countdown and Period */}
                             <div className="w-1/2 p-2.5 flex flex-col justify-between items-end text-right">
                               <div className="flex items-center gap-1.5 h-[14px] select-none">
-                                <span className="text-[10px] font-black text-[#4c0f12] uppercase tracking-wider leading-none">Time remaining</span>
+                                <div className={`w-2 h-2 rounded-full ${socketConnected ? 'bg-[#4c0f12] shadow-[0_0_8px_rgba(76,15,18,0.4)]' : 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]'}`} />
+                                <span className="text-[10px] font-black text-[#4c0f12] uppercase tracking-wider leading-none">
+                                  {socketConnected ? 'Time remaining' : 'Connecting...'}
+                                </span>
                               </div>
                               
                               {/* Ticket styled dark digital countdown blocks */}
@@ -4099,7 +4119,7 @@ export default function App() {
 
                               {/* Current Period value directly underneath */}
                               <span className="text-[11px] font-black text-[#4c0f12] tracking-wide font-mono leading-none select-all">
-                                {periodCode}
+                                {periodCode || "Loading..."}
                               </span>
                             </div>
 
