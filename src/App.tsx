@@ -564,6 +564,7 @@ export default function App() {
   const [claimedMonthlyRewards, setClaimedMonthlyRewards] = useState<number[]>([]);
   const [inviteeCount, setInviteeCount] = useState(0);
   const [inviteeDepositCount, setInviteeDepositCount] = useState(0);
+  const [usedSpins, setUsedSpins] = useState(0);
   const [showVipScreen, setShowVipScreen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showBalanceRecords, setShowBalanceRecords] = useState(false);
@@ -623,6 +624,7 @@ export default function App() {
             setUserLevel(userData.level || 0);
             setClaimedVipRewards(userData.claimedVipRewards || []);
             setClaimedMonthlyRewards(userData.claimedMonthlyRewards || []);
+            setUsedSpins(userData.usedSpins || 0);
             setAvatar(userData.avatar || AVAILABLE_AVATARS[0]);
             setIsLoggedIn(true);
             
@@ -637,7 +639,10 @@ export default function App() {
               setInviteeCount(snapReferrals.size);
               
               // Count those who deposited more than 200
-              const depositedList = snapReferrals.docs.filter(d => (parseFloat(d.data().totalDeposits) || 0) >= 200);
+              const depositedList = snapReferrals.docs.filter(docSnap => {
+                const d = docSnap.data();
+                return (parseFloat(d.totalDeposits) || 0) >= 200 || (parseFloat(d.balance) || 0) >= 200;
+              });
               setInviteeDepositCount(depositedList.length);
             }
             
@@ -5567,6 +5572,17 @@ export default function App() {
                 nickname={nickname}
                 avatar={avatar}
                 totalDeposits={totalDeposits}
+                inviteeDepositCount={inviteeDepositCount}
+                usedSpins={usedSpins}
+                uid={uid}
+                onSpinUsed={async () => {
+                  const newUsed = usedSpins + 1;
+                  setUsedSpins(newUsed);
+                  if (uid) {
+                    const userDocRef = doc(db, 'users', uid);
+                    await updateDoc(userDocRef, { usedSpins: newUsed });
+                  }
+                }}
               />
             ) : (
               <motion.div

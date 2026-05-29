@@ -11,6 +11,10 @@ interface InviteWheelViewProps {
   nickname: string;
   avatar: string;
   totalDeposits: number;
+  inviteeDepositCount: number;
+  usedSpins: number;
+  onSpinUsed: () => void;
+  uid: string;
 }
 
 const PRIZES = [
@@ -24,8 +28,21 @@ const PRIZES = [
   { id: 8, label: '₹98', value: 98, prob: 1 }
 ];
 
-export default function InviteWheelView({ selectedLang, onBack, balance, setBalance, setLobbyToast, nickname, avatar, totalDeposits }: InviteWheelViewProps) {
-  const [spinsLeft, setSpinsLeft] = useState(1);
+export default function InviteWheelView({ 
+  selectedLang, 
+  onBack, 
+  balance, 
+  setBalance, 
+  setLobbyToast, 
+  nickname, 
+  avatar, 
+  totalDeposits,
+  inviteeDepositCount,
+  usedSpins,
+  onSpinUsed,
+  uid
+}: InviteWheelViewProps) {
+  const spinsLeft = Math.max(0, inviteeDepositCount - usedSpins);
   const [isSpinning, setIsSpinning] = useState(false);
   const [rotation, setRotation] = useState(0);
   const [totalSpins, setTotalSpins] = useState(0);
@@ -110,7 +127,7 @@ export default function InviteWheelView({ selectedLang, onBack, balance, setBala
     if (navigator.vibrate) navigator.vibrate(50);
 
     setIsSpinning(true);
-    setSpinsLeft(prev => prev - 1);
+    onSpinUsed();
     
     if (soundEnabled && spinAudioRef.current) {
       spinAudioRef.current.currentTime = 0;
@@ -170,11 +187,9 @@ export default function InviteWheelView({ selectedLang, onBack, balance, setBala
   };
 
   const handleInvite = () => {
+    // Just copy link, don't give fake spins
+    navigator.clipboard.writeText(`https://neon-trade.vercel.app?ref=${uid}`);
     setLobbyToast({ type: 'success', text: selectedLang === 'en' ? 'Referral link copied!' : 'रेफरल लिंक कॉपी किया गया!' });
-    setTimeout(() => {
-       setSpinsLeft(prev => prev + 1);
-       setLobbyToast({ type: 'info', text: selectedLang === 'en' ? 'A friend registered! You got 1 Spin.' : 'एक दोस्त ने पंजीकरण किया! आपको 1 स्पिन मिला।' });
-    }, 3000);
   };
 
   return (
