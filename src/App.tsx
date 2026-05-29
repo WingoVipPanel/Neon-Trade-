@@ -1357,11 +1357,88 @@ export default function App() {
   };
 
   const [wingoTimers, setWingoTimers] = useState<{ [key: string]: number }>({
-    '30s': 28,
-    '1m': 54,
-    '3m': 142,
-    '5m': 278,
+    '30s': 0,
+    '1m': 0,
+    '3m': 0,
+    '5m': 0,
   });
+
+  // Standalone Timer & API Fallback for Static Environments (Netlify, etc.)
+  useEffect(() => {
+    // 1. Local Timer Computation (UTC based)
+    const updateLocalTimers = () => {
+      const nowTs = Math.floor(Date.now() / 1000);
+      setWingoTimers({
+        '30s': 30 - (nowTs % 30),
+        '1m': 60 - (nowTs % 60),
+        '3m': 180 - (nowTs % 180),
+        '5m': 300 - (nowTs % 300),
+      });
+    };
+    const timerInterval = setInterval(updateLocalTimers, 1000);
+    updateLocalTimers();
+
+    // 2. API Record Polling (Direct from External if possible, or fallback)
+    const syncWithExternal = async () => {
+      const rooms: ('30s' | '1m' | '3m' | '5m')[] = ['30s', '1m', '3m', '5m'];
+      const urlMap = {
+        '30s': 'https://draw.ar-lottery01.com/WinGo/WinGo_30S/GetHistoryIssuePage.json',
+        '1m': 'https://draw.ar-lottery01.com/WinGo/WinGo_1M/GetHistoryIssuePage.json',
+        '3m': 'https://draw.ar-lottery01.com/WinGo/WinGo_3M/GetHistoryIssuePage.json',
+        '5m': 'https://draw.ar-lottery01.com/WinGo/WinGo_5M/GetHistoryIssuePage.json',
+      };
+
+      for (const room of rooms) {
+        try {
+          const targetUrl = urlMap[room];
+          // Try direct fetch first, fallback to allorigins proxy if blocked by CORS
+          let res: Response | null = await fetch(targetUrl).catch(() => null);
+          if (!res || !res.ok) {
+            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+            res = await fetch(proxyUrl);
+          }
+          
+          if (!res.ok) continue;
+          const d = await res.json();
+          const list = d?.data?.list || [];
+          if (list.length > 0) {
+            setWingoHistory(prev => {
+              const currentHistory = prev[room] || [];
+              const lastLocalPeriod = currentHistory[0]?.period;
+              
+              const newRecords = list.map((item: any) => ({
+                period: item.issueNumber,
+                number: parseInt(item.number),
+                color: item.color.toLowerCase(), // 'red', 'green', 'red,violet' etc
+                size: parseInt(item.number) >= 5 ? 'Big' : 'Small'
+              }));
+
+              if (newRecords[0].period !== lastLocalPeriod) {
+                const merged = [...newRecords, ...currentHistory];
+                const unique = Array.from(new Map(merged.map(item => [item.period, item])).values())
+                  .sort((a: any, b: any) => b.period.localeCompare(a.period))
+                  .slice(0, 500);
+                
+                return { ...prev, [room]: unique as any };
+              }
+              return prev;
+            });
+          }
+        } catch (e) {
+          // console.warn(`Client-side fetch failed for ${room} (likely CORS). Reverting to socket/firestore.`);
+        }
+      }
+    };
+
+    const apiInterval = setInterval(syncWithExternal, 10000);
+    syncWithExternal(); // Initial sync
+
+    return () => {
+      clearInterval(timerInterval);
+      clearInterval(apiInterval);
+    };
+  }, []);
+
   const [chartPage, setChartPage] = useState(1);
   const [historyPage, setHistoryPage] = useState(1);
   const [socketConnected, setSocketConnected] = useState(false);
@@ -1581,11 +1658,15 @@ export default function App() {
       let periodCode = 'fallback_' + room;
       if (lastPeriodObj) {
         try {
-          const lastPeriod = lastPeriodObj.period;
-          const basePart = lastPeriod.substring(0, 13);
-          const seqPart = lastPeriod.substring(13);
-          const nextSeq = String(parseInt(seqPart) + 1).padStart(4, '0');
-          periodCode = basePart + nextSeq;
+          const lastPeriod = String(lastPeriodObj.period);
+          if (lastPeriod.length >= 13) {
+            const basePart = lastPeriod.substring(0, 13);
+            const seqPart = lastPeriod.substring(13);
+            const nextSeq = (parseInt(seqPart) + 1).toString().padStart(lastPeriod.length - 13, '0');
+            periodCode = basePart + nextSeq;
+          } else {
+            periodCode = (BigInt(lastPeriod) + 1n).toString();
+          }
         } catch (e) {
           periodCode = 'fallback_' + room;
         }
@@ -4021,6 +4102,10 @@ export default function App() {
                       if (lastPeriodObj && lastPeriodObj.period) {
                         try {
                           const lastPeriod = String(lastPeriodObj.period);
+                          const timerVal = wingoTimers[activeWingoRoom || '30s'] || 0;
+                          
+                          // If we are in the "Wait" zone (last 5s), it means the result is yet to come
+                          // So the current round IS the one based on the previous + 1
                           if (lastPeriod.length >= 13) {
                             const basePart = lastPeriod.substring(0, 13);
                             const seqPart = lastPeriod.substring(13);
@@ -4088,9 +4173,9 @@ export default function App() {
                             {/* Right Block: Countdown and Period */}
                             <div className="w-1/2 p-2.5 flex flex-col justify-between items-end text-right">
                               <div className="flex items-center gap-1.5 h-[14px] select-none">
-                                <div className={`w-2 h-2 rounded-full ${socketConnected ? 'bg-[#4c0f12] shadow-[0_0_8px_rgba(76,15,18,0.4)]' : 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]'}`} />
+                                <div className={`w-2 h-2 rounded-full ${socketConnected ? 'bg-[#4c0f12] shadow-[0_0_8px_rgba(76,15,18,0.4)]' : 'bg-[#4c0f12]/40 shadow-[0_0_4px_rgba(76,15,18,0.2)]'}`} />
                                 <span className="text-[10px] font-black text-[#4c0f12] uppercase tracking-wider leading-none">
-                                  {socketConnected ? 'Time remaining' : 'Connecting...'}
+                                  {socketConnected ? 'Time remaining' : 'Data Sync'}
                                 </span>
                               </div>
                               
