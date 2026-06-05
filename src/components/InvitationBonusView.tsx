@@ -62,7 +62,7 @@ export default function InvitationBonusView({
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: '100%' }}
       transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-      className="w-full flex-1 overflow-y-auto pb-24 font-sans text-white h-full"
+      className="w-full flex-1 overflow-y-auto pb-6 font-sans text-white h-full"
     >
       {/* Header */}
       <div className="sticky top-0 z-20 flex items-center justify-center p-4 bg-[#341113] border-b border-white/5">

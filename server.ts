@@ -3,39 +3,32 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import http from "http";
 import { Server } from "socket.io";
-import admin from 'firebase-admin';
-import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { initializeApp } from 'firebase/app';
+import { getFirestore, doc, setDoc, getDocs, collection, query, orderBy, limit, serverTimestamp } from 'firebase/firestore';
 import firebaseConfig from './firebase-applet-config.json';
 
 let db: any = null;
 
 async function initFirebase() {
   try {
-    if (admin.apps.length === 0) {
-      console.log("Initializing Firebase Admin...");
-      admin.initializeApp({
-        projectId: firebaseConfig.projectId,
-      });
-    }
+    console.log("Initializing Firebase Client SDK on Server...");
+    const app = initializeApp(firebaseConfig);
     
     // Explicitly use the database ID from config if present
-    const dbId = firebaseConfig.firestoreDatabaseId;
-    console.log(`Setting up Firestore. Project: ${admin.app().options.projectId}, Database: ${dbId}`);
-    
-    db = getFirestore(admin.app(), dbId || '(default)');
+    db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
     
     // Verification test with a timeout to avoid blocking boot
     try {
-      const healthCheckPromise = db.collection('_server_health').doc('boot').set({
-        timestamp: FieldValue.serverTimestamp(),
+      const healthCheckPromise = setDoc(doc(db, '_server_health', 'boot'), {
+        timestamp: serverTimestamp(),
         status: 'ok',
-        databaseId: dbId || '(default)'
+        databaseId: firebaseConfig.firestoreDatabaseId || '(default)'
       });
       
-      // Give it 3 seconds or proceed anyway
+      // Give it 5 seconds or proceed anyway
       await Promise.race([
         healthCheckPromise,
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Firestore health check timeout")), 3000))
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Firestore health check timeout")), 5000))
       ]);
       console.log("Firestore Health Check: SUCCESS");
     } catch (e: any) {
@@ -133,10 +126,12 @@ async function startServer() {
     try {
         console.log("Fetching drawing history from Firestore...");
         // Fetch all recent records and filter in memory to avoid complex index requirements on boot
-        const snap = await db.collection('wingo_history')
-            .orderBy('serverTimestamp', 'desc')
-            .limit(4000)
-            .get();
+        const q = query(
+          collection(db, 'wingo_history'),
+          orderBy('serverTimestamp', 'desc'),
+          limit(4000)
+        );
+        const snap = await getDocs(q);
             
         console.log(`Firestore returned ${snap.docs.length} total records.`);
         
@@ -215,10 +210,10 @@ async function startServer() {
       // Persist to Firestore (Async - don't block the loop)
       if (db) {
           const docId = `${room}_${record.period}`;
-          db.collection('wingo_history').doc(docId).set({
+          setDoc(doc(db, 'wingo_history', docId), {
               ...record,
               room,
-              serverTimestamp: FieldValue.serverTimestamp()
+              serverTimestamp: serverTimestamp()
           }).catch((e: any) => {
               const now = Date.now();
               if (now - lastErrorLogTime > 600000) {

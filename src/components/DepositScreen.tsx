@@ -627,7 +627,7 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
         <div className="text-white/80 text-[12.5px] leading-[1.6] mb-8 bg-[#3d0f10]/30 rounded-xl p-4 border border-white/5">
           <div className="font-bold mb-2 text-[13.5px] text-white">Deposit tips:</div>
           <p className="mb-2">1. Each deposit will be credited within 1-5 minutes.</p>
-          <p className="mb-2">2. After the payment is successful, please return to the Tech win deposit page to check your account balance.</p>
+          <p className="mb-2">2. After the payment is successful, please return to the Neon Trade deposit page to check your account balance.</p>
           <p className="mb-3">3. If your deposit does not arrive within 30 minutes, please contact customer service for help.</p>
 
           <div className="font-bold mb-1.5 text-[13.5px] text-white mt-4">Important notes:</div>

@@ -37,7 +37,14 @@ import {
   Inbox,
   Info,
   Volume2,
-  VolumeX
+  VolumeX,
+  Sparkles,
+  Flame,
+  CreditCard,
+  Users,
+  Award,
+  Zap,
+  TrendingUp
 } from 'lucide-react';
 
 import { 
@@ -74,9 +81,8 @@ import InvitationBonusView from './components/InvitationBonusView';
 import InviteWheelView from './components/InviteWheelView';
 import { WingoWinningsModal } from './components/WingoWinningsModal';
 import QuickInstall from './components/QuickInstall';
-
 // Premium background and default assets from our assets directory
-const gameLogo = "https://i.ibb.co/LhbR2xX0/file-00000000d8947209aa95cf6b9358b708.png";
+const gameLogo = "https://i.ibb.co/rGjxr0hn/file-00000000d308720cab57b8c2210b5b42.png";
 import casinoBg from './assets/images/casino_bg_1779214894050.png';
 
 // 8 Indian Casino style realistic player avatars shown in the user's reference picture
@@ -107,8 +113,8 @@ const VIP_ICONS: { [key: number]: string } = {
 const ANNOUNCEMENTS = [
   {
     id: 1,
-    title: "Welcome to Tech win",
-    content: "Welcome to Tech win! The most professional money-making gaming platform in India. With an advanced agency system and rebates, achieve your dream of financial freedom! We are recruiting agents across India. As long as you have the capability, you set your own salary!",
+    title: "Welcome to Neon Trade",
+    content: "Welcome to Neon Trade! The most professional money-making gaming platform in India. With an advanced agency system and rebates, achieve your dream of financial freedom! We are recruiting agents across India. As long as you have the capability, you set your own salary!",
     date: "2025-04-21 12:59:30"
   },
   {
@@ -1009,10 +1015,10 @@ export default function App() {
       notifs = [
         {
           id: 'welcome_' + Date.now(),
-          titleEn: '🎉 Welcome to Tech win!',
-          titleHi: '🎉 Tech win में आपका स्वागत है!',
-          contentEn: 'Thank you for registering on Tech win. Win up to ₹1,000,000, claim high rebate rewards, spin the wheel, and invite your friends to earn unlimited bonuses!',
-          contentHi: 'Tech win पर पंजीकरण करने के लिए धन्यवाद। ₹1,000,000 तक जीतें, उच्च रिबेट पुरस्कार प्राप्त करें, व्हील घुमाएं और असीमित बोनस अर्जित करने के लिए अपने दोस्तों को आमंत्रित करें!',
+          titleEn: '🎉 Welcome to Neon Trade!',
+          titleHi: '🎉 Neon Trade में आपका स्वागत है!',
+          contentEn: 'Thank you for registering on Neon Trade. Win up to ₹1,000,000, claim high rebate rewards, spin the wheel, and invite your friends to earn unlimited bonuses!',
+          contentHi: 'Neon Trade पर पंजीकरण करने के लिए धन्यवाद। ₹1,000,000 तक जीतें, उच्च रिबेट पुरस्कार प्राप्त करें, व्हील घुमाएं और असीमित बोनस अर्जित करने के लिए अपने दोस्तों को आमंत्रित करें!',
           date: displayTimestamp,
           type: 'welcome',
           unread: false
@@ -1068,8 +1074,8 @@ export default function App() {
       id: 'recharge_rem_' + (Date.now() + 1).toString(),
       titleEn: '💎 Recharge Your Wallet Now!',
       titleHi: '💎 अभी अपना वॉलेट रिचार्ज करें!',
-      contentEn: 'To continue playing and winning big in Tech win, please ensure your wallet has sufficient balance. Recharge now to get exclusive first-deposit bonuses!',
-      contentHi: 'Tech win में खेलना जारी रखने और बड़ी जीत हासिल करने के लिए, कृपया सुनिश्चित करें कि आपके वॉलेट में पर्याप्त शेष राशि है। विशेष प्रथम-जमा बोनस प्राप्त करने के लिए अभी रिचार्ज करें!',
+      contentEn: 'To continue playing and winning big in Neon Trade, please ensure your wallet has sufficient balance. Recharge now to get exclusive first-deposit bonuses!',
+      contentHi: 'Neon Trade में खेलना जारी रखने और बड़ी जीत हासिल करने के लिए, कृपया सुनिश्चित करें कि आपके वॉलेट में पर्याप्त शेष राशि है। विशेष प्रथम-जमा बोनस प्राप्त करने के लिए अभी रिचार्ज करें!',
       date: displayTimestamp,
       type: 'bonus',
       unread: true
@@ -1521,6 +1527,7 @@ export default function App() {
   const [wingoRandomizing, setWingoRandomizing] = useState<boolean>(false);
   const [wingoRandomActiveNum, setWingoRandomActiveNum] = useState<number | null>(null);
   const [wingoCategory, setWingoCategory] = useState<'all' | 'wingo' | 'slots' | 'popular'>('all');
+  const [promoFilter, setPromoFilter] = useState<'all' | 'hot' | 'deposit' | 'invite'>('all');
 
   const [wingoHistoryTab, setWingoHistoryTab] = useState<'history' | 'chart' | 'myhistory'>('history');
   const [showWingoHowToPlay, setShowWingoHowToPlay] = useState(false);
@@ -1535,6 +1542,54 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
+  const sanitizeHistoryForFirestore = (historyObj: any): any => {
+    if (historyObj === undefined || historyObj === null) return null;
+    if (Array.isArray(historyObj)) {
+      return historyObj.map(item => sanitizeHistoryForFirestore(item)).filter(item => item !== undefined);
+    }
+    if (typeof historyObj === 'object') {
+      const cleanObj: any = {};
+      for (const key of Object.keys(historyObj)) {
+        const val = historyObj[key];
+        if (val !== undefined) {
+          cleanObj[key] = sanitizeHistoryForFirestore(val);
+        }
+      }
+      return cleanObj;
+    }
+    return historyObj;
+  };
+
+  const getDocWithRetry = async (docRef: any, maxRetries = 4, delay = 1000): Promise<any> => {
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        return await getDoc(docRef);
+      } catch (err: any) {
+        if (err.message && err.message.toLowerCase().includes('permission') && i < maxRetries - 1) {
+          console.warn(`Firestore permission denied on read, retrying in ${delay * (i + 1)}ms... (Attempt ${i + 1}/${maxRetries})`);
+          await new Promise(res => setTimeout(res, delay * (i + 1)));
+          continue;
+        }
+        throw err;
+      }
+    }
+  };
+
+  const setDocWithRetry = async (docRef: any, data: any, maxRetries = 4, delay = 1000): Promise<any> => {
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        return await setDoc(docRef, data);
+      } catch (err: any) {
+        if (err.message && err.message.toLowerCase().includes('permission') && i < maxRetries - 1) {
+          console.warn(`Firestore permission denied on write, retrying in ${delay * (i + 1)}ms... (Attempt ${i + 1}/${maxRetries})`);
+          await new Promise(res => setTimeout(res, delay * (i + 1)));
+          continue;
+        }
+        throw err;
+      }
+    }
+  };
+
   const [wingoHistory, setWingoHistory] = useState<{ [key: string]: { period: string; number: number; color: 'Green' | 'Red' | 'Violet' | 'Green+Violet' | 'Red+Violet'; size: 'Big' | 'Small'; betAmount?: number; winLoss?: 'Win' | 'Loss' | '-'; timestamp?: string; userChoice?: string | number }[] }>(() => {
     try {
         const saved = localStorage.getItem('wingo_history');
@@ -1544,54 +1599,123 @@ export default function App() {
     }
   });
 
-  // Load global wingoHistory from Firestore on mount
+  // Load and sync user-specific wingo_history from Firestore or Backup on mount / login change
   useEffect(() => {
-    const fetchGlobalHistory = async () => {
-      if (!db) return;
-      try {
-        const newHistoryState: any = { '30s': [], '1m': [], '3m': [], '5m': [] };
-        let hasData = false;
-
-        const q = query(
-          collection(db, 'wingo_history'),
-          orderBy('serverTimestamp', 'desc'),
-          limit(4000)
-        );
-        const snap = await getDocs(q);
-        
-        snap.forEach(docSnapshot => {
-          const data = docSnapshot.data();
-          const room = data.room;
-          if (room && newHistoryState[room] && newHistoryState[room].length < 500) {
-            newHistoryState[room].push({
-              period: data.period,
-              number: data.number,
-              color: data.color,
-              size: data.size,
-              timestamp: data.serverTimestamp?.toDate?.()?.toISOString() || new Date().toISOString()
+    const syncUserHistory = async () => {
+      // 1. If not logged in, load/fetch global history
+      if (!isLoggedIn || !auth.currentUser || !db) {
+        try {
+          const saved = localStorage.getItem('wingo_history');
+          if (saved) {
+            setWingoHistory(JSON.parse(saved));
+          } else {
+            const newHistoryState: any = { '30s': [], '1m': [], '3m': [], '5m': [] };
+            let hasData = false;
+            const q = query(
+              collection(db, 'wingo_history'),
+              orderBy('serverTimestamp', 'desc'),
+              limit(4000)
+            );
+            const snap = await getDocs(q);
+            snap.forEach(docSnapshot => {
+              const data = docSnapshot.data();
+              const room = data.room;
+              if (room && newHistoryState[room] && newHistoryState[room].length < 500) {
+                newHistoryState[room].push({
+                  period: data.period,
+                  number: data.number,
+                  color: data.color,
+                  size: data.size,
+                  timestamp: data.serverTimestamp?.toDate?.()?.toISOString() || new Date().toISOString()
+                });
+                hasData = true;
+              }
             });
-            hasData = true;
+            if (hasData) {
+              setWingoHistory(newHistoryState);
+              localStorage.setItem('wingo_history', JSON.stringify(newHistoryState));
+            }
           }
-        });
+        } catch (e) {
+          console.error("Error restoring global log-out history:", e);
+        }
+        return;
+      }
 
-        if (hasData) {
-          setWingoHistory(newHistoryState);
-          localStorage.setItem('wingo_history', JSON.stringify(newHistoryState));
+      const uid = auth.currentUser.uid;
+
+      // 2. If logged in, first perform instant UI restoration from user-key localStorage
+      try {
+        const cached = localStorage.getItem(`wingo_history_${uid}`);
+        if (cached) {
+          setWingoHistory(JSON.parse(cached));
+        }
+      } catch (e) {
+        console.error("Error loading cached user-specific history:", e);
+      }
+
+      // 3. Fetch user's authoritative 500-result history backup from Firestore
+      try {
+        const docRef = doc(db, 'user_wingo_history', uid);
+        const docSnap = await getDocWithRetry(docRef);
+
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data && data.wingoHistory) {
+            setWingoHistory(data.wingoHistory);
+            localStorage.setItem(`wingo_history_${uid}`, JSON.stringify(data.wingoHistory));
+            localStorage.setItem('wingo_history', JSON.stringify(data.wingoHistory));
+          }
+        } else {
+          // If no Firestore backup exists yet, back up the current state of history to Firestore for this user
+          const current = JSON.parse(localStorage.getItem('wingo_history') || '{}');
+          const isHistoryEmpty = !current || Object.values(current).every((h: any) => h.length === 0);
+          if (!isHistoryEmpty) {
+            const sanitized = sanitizeHistoryForFirestore(current);
+            await setDocWithRetry(doc(db, 'user_wingo_history', uid), {
+              userId: uid,
+              wingoHistory: sanitized,
+              updatedAt: new Date().toISOString()
+            });
+          }
         }
       } catch (err) {
-        console.error("Firestore history fetch failed:", err);
+        console.error("Failed to sync user-specific Wingo history from Firestore:", err);
       }
     };
 
-    fetchGlobalHistory();
-  }, []);
+    syncUserHistory();
+  }, [isLoggedIn, db]);
 
-  // Save wingoHistory to localStorage on update
+  // Save and backup wingoHistory to localStorage & Firestore on update
   useEffect(() => {
     const isHistoryEmpty = Object.values(wingoHistory).every((h: any) => h.length === 0);
     if (isHistoryEmpty) return;
+
+    // A. Always sync to global localStorage
     localStorage.setItem('wingo_history', JSON.stringify(wingoHistory));
-  }, [wingoHistory]);
+
+    // B. If logged in, sync to user backup and save to Firestore (debounced to save write operations)
+    if (isLoggedIn && auth.currentUser) {
+      const uid = auth.currentUser.uid;
+      localStorage.setItem(`wingo_history_${uid}`, JSON.stringify(wingoHistory));
+
+      const timer = setTimeout(() => {
+        if (db && auth.currentUser && auth.currentUser.uid === uid) {
+          const sanitized = sanitizeHistoryForFirestore(wingoHistory);
+          setDocWithRetry(doc(db, 'user_wingo_history', uid), {
+            userId: uid,
+            wingoHistory: sanitized,
+            updatedAt: new Date().toISOString()
+          }).catch(err => {
+            console.error("Failed to back up wingoHistory to user_wingo_history in Firestore:", err);
+          });
+        }
+      }, 3500); // 3.5 seconds debounce to protect write quota limit
+
+      return () => clearTimeout(timer);
+    }
+  }, [wingoHistory, isLoggedIn]);
   const [myWingoBets, setMyWingoBets] = useState<{ [key: string]: { period: string; number?: number; color?: string; size?: string; betAmount: number; winLoss: 'Win' | 'Loss' | '-'; timestamp: string; userChoice: string | number; resolved: boolean }[] }>({ '30s': [], '1m': [], '3m': [], '5m': [] });
   const [expandedBetKey, setExpandedBetKey] = useState<string | null>(null);
 
@@ -2139,7 +2263,8 @@ export default function App() {
   };
 
   const handleClaimInvitationBonus = async (tierId: number, reward: number) => {
-    if (!uid) return;
+    const userUid = auth.currentUser?.uid;
+    if (!userUid) return;
     if (claimedInvitationBonuses.includes(tierId)) {
       setLobbyToast({ 
         type: 'error', 
@@ -2150,7 +2275,7 @@ export default function App() {
 
     try {
       await runTransaction(db, async (transaction) => {
-        const userRef = doc(db, 'users', uid);
+        const userRef = doc(db, 'users', userUid);
         const userSnap = await transaction.get(userRef);
         if (!userSnap.exists()) throw new Error("User not found");
 
@@ -2419,7 +2544,7 @@ export default function App() {
           <div className="relative flex items-center justify-center animate-pulse duration-[2000ms]">
             <img 
               src={gameLogo} 
-              alt="Tech win" 
+              alt="Neon Trade" 
               className="h-24 w-auto object-contain filter drop-shadow-[0_4px_16px_rgba(230,57,70,0.35)] select-none pointer-events-none"
               referrerPolicy="no-referrer"
             />
@@ -2442,7 +2567,7 @@ export default function App() {
 
   return (
     <div 
-      className={`relative min-h-screen w-full flex flex-col items-center select-none overflow-x-hidden pt-0 ${activeWingoRoom ? 'pb-0' : currentTab === 'wheel' ? 'pb-20' : 'pb-32'}`}
+      className={`relative min-h-screen w-full flex flex-col items-center select-none overflow-x-hidden pt-0 ${activeWingoRoom ? 'pb-0' : currentTab === 'wheel' ? 'pb-20' : 'pb-24'}`}
       style={{
         backgroundColor: isLoggedIn ? '#260506' : '#0c0a0a',
         fontFamily: "'Inter', sans-serif"
@@ -3105,7 +3230,7 @@ export default function App() {
                         {selectedLang === 'en' ? 'Verified Account' : 'सत्यापित खाता'}
                       </h4>
                       <p className="text-white/40 text-[11px] font-medium">
-                        {selectedLang === 'en' ? 'Secured by Tech win Cloud Protection' : 'Tech win क्लाउड सुरक्षा द्वारा सुरक्षित'}
+                        {selectedLang === 'en' ? 'Secured by Neon Trade Cloud Protection' : 'Neon Trade क्लाउड सुरक्षा द्वारा सुरक्षित'}
                       </p>
                     </div>
                   </div>
@@ -3135,8 +3260,8 @@ export default function App() {
                         <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0 mt-1.5" />
                         <p className="text-white/60 text-[11.5px] leading-relaxed">
                           {selectedLang === 'en' 
-                            ? 'Never share your login credentials or OTP with anyone, including individuals claiming to be Tech win staff.' 
-                            : 'अपना लॉगिन क्रेडेंशियल या ओटीपी किसी के साथ साझा न करें, जिसमें Tech win स्टाफ होने का दावा करने वाले व्यक्ति भी शामिल हैं।'}
+                            ? 'Never share your login credentials or OTP with anyone, including individuals claiming to be Neon Trade staff.' 
+                            : 'अपना लॉगिन क्रेडेंशियल या ओटीपी किसी के साथ साझा न करें, जिसमें Neon Trade स्टाफ होने का दावा करने वाले व्यक्ति भी शामिल हैं।'}
                         </p>
                       </li>
                       <li className="flex items-start gap-3">
@@ -3565,7 +3690,7 @@ export default function App() {
               )}
             </AnimatePresence>
 
-            <div className={`relative z-10 w-full max-w-[410px] bg-transparent flex flex-col pt-0 ${activeWingoRoom ? 'pb-0' : currentTab === 'wheel' ? 'pb-0' : 'pb-16'}`}>
+            <div className="relative z-10 w-full max-w-[410px] bg-transparent flex flex-col pt-0 pb-0">
           
           <AnimatePresence mode="wait">
             {currentTab === 'mine' ? (
@@ -3999,7 +4124,7 @@ export default function App() {
                       <div className="relative flex items-center justify-center">
                         <img 
                           src={gameLogo} 
-                          alt="Tech win Brand Logo" 
+                          alt="Neon Trade Brand Logo" 
                           className="h-[76px] -my-5.5 w-auto object-contain select-none filter drop-shadow-[0_2px_8px_rgba(0,0,0,0.65)] pointer-events-none z-10" 
                           referrerPolicy="no-referrer"
                           draggable={false}
@@ -4116,12 +4241,12 @@ export default function App() {
                         </button>
                       </div>
                       
-                      {/* Center aligned Brand Logo - No vertical squishing */}
-                      <div className="flex items-center justify-center">
+                      {/* Center aligned Brand Logo - Bigger and sharper */}
+                      <div className="flex items-center justify-center relative">
                         <img 
                           src={gameLogo} 
-                          alt="Tech win Brand Logo" 
-                          className="h-[44px] w-auto object-contain select-none filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)] pointer-events-none"
+                          alt="Neon Trade Brand Logo" 
+                          className="h-[64px] -my-3 w-auto object-contain select-none filter drop-shadow-[0_2px_5px_rgba(0,0,0,0.55)] pointer-events-none z-10"
                           referrerPolicy="no-referrer"
                           draggable={false}
                           onContextMenu={(e) => e.preventDefault()}
@@ -4138,43 +4263,43 @@ export default function App() {
                     {/* Spacer to push content down because of the fixed header */}
                     <div className="h-[52px] w-full shrink-0" />
 
-                    {/* Wallet Balance Card - Enhanced Grading with Lighting */}
-                    <div className="w-full px-4 pt-3.5 pb-2 flex flex-col">
+                    {/* Wallet Balance Card - Enhanced Grading with Lighting - Balanced and Compact */}
+                    <div className="w-full px-4 pt-2 pb-1.5 flex flex-col">
                       <div 
-                        className="w-full rounded-[24px] p-5 flex flex-col items-center justify-center shadow-[0_8px_25px_rgba(0,0,0,0.4)] border border-white/10"
+                        className="w-full rounded-[18px] px-4 py-3.5 flex flex-col items-center justify-center shadow-[0_8px_25px_rgba(0,0,0,0.4)] border border-white/10"
                         style={{ background: 'linear-gradient(180deg, #5c1c1e 0%, #3d0f10 100%)' }}
                       >
                         {/* Balance display in center */}
-                        <div className="flex flex-col items-center justify-center mb-3">
+                        <div className="flex flex-col items-center justify-center mb-2">
                           <div className="flex items-center gap-2 mb-0.5">
-                            <span className="text-[22px] font-sans font-black tracking-tight text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">₹{balance.toFixed(2)}</span>
+                            <span className="text-[21px] font-sans font-black tracking-tight text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">₹{balance.toFixed(2)}</span>
                             <button 
                               onClick={() => {
                                 playWingoSound(clickAudioRef);
                                 handleRefreshBalance();
                               }} 
-                              className="p-1.5 hover:bg-white/5 rounded-full transition cursor-pointer active:scale-90"
+                              className="p-1 hover:bg-white/5 rounded-full transition cursor-pointer active:scale-90"
                             >
-                              <RefreshCw className={`h-3.5 w-3.5 text-white/50 ${isRefreshing ? 'animate-spin' : ''}`} />
+                              <RefreshCw className={`h-3.5 w-3.5 text-white/55 ${isRefreshing ? 'animate-spin' : ''}`} />
                             </button>
                           </div>
                           
-                          <div className="flex items-center gap-1.5 bg-black/20 px-3 py-1 rounded-full border border-white/5">
-                            <div className="w-3.5 h-3.5 bg-amber-400 rounded-sm relative shadow-inner shrink-0 scale-90">
-                              <div className="absolute right-0 top-[20%] w-1 h-1 bg-amber-600 rounded-l-xs" />
+                          <div className="flex items-center gap-1.5 bg-black/20 px-2.5 py-0.5 rounded-full border border-white/5">
+                            <div className="w-3 h-3 bg-amber-400 rounded-sm relative shadow-inner shrink-0 scale-90">
+                              <div className="absolute right-0 top-[20%] w-0.5 h-0.5 bg-amber-600 rounded-l-xs" />
                             </div>
-                            <span className="text-white/70 text-[11px] font-bold tracking-wide uppercase">Wallet balance</span>
+                            <span className="text-white/70 text-[10.5px] font-bold tracking-wide uppercase">Wallet balance</span>
                           </div>
                         </div>
 
                         {/* Withdraw & Deposit pill shape action buttons */}
-                        <div className="grid grid-cols-2 gap-3 w-full mt-2">
+                        <div className="grid grid-cols-2 gap-2.5 w-full mt-1.5">
                           <button 
                             onClick={() => {
                               playWingoSound(clickAudioRef);
                               setShowWithdrawScreen(true);
                             }}
-                            className="py-2.5 rounded-full font-extrabold text-[13px] text-white uppercase tracking-wider text-center cursor-pointer shadow-lg transition transform active:scale-95 border border-white/10 bg-gradient-to-r from-[#d45c5c] to-[#cd4a4a]"
+                            className="py-2.5 rounded-full font-black text-[12.5px] text-white uppercase tracking-wider text-center cursor-pointer shadow-lg transition transform active:scale-95 border border-white/10 bg-gradient-to-r from-[#d45c5c] to-[#cd4a4a]"
                           >
                             Withdraw
                           </button>
@@ -4183,7 +4308,7 @@ export default function App() {
                               playWingoSound(clickAudioRef);
                               setShowDepositScreen(true);
                             }}
-                            className="py-2.5 rounded-full font-extrabold text-[13px] text-white uppercase tracking-wider text-center cursor-pointer shadow-lg transition transform active:scale-95 border border-white/10 bg-gradient-to-r from-[#248c66] to-[#1c7c5d]"
+                            className="py-2.5 rounded-full font-black text-[12.5px] text-white uppercase tracking-wider text-center cursor-pointer shadow-lg transition transform active:scale-95 border border-white/10 bg-gradient-to-r from-[#248c66] to-[#1c7c5d]"
                           >
                             Deposit
                           </button>
@@ -5719,7 +5844,7 @@ export default function App() {
                                 <span className="absolute -inset-0.5 rounded-xl bg-gradient-to-r from-red-500 to-amber-400 opacity-20 blur animate-pulse" />
                                 <img
                                   src={gameLogo}
-                                  alt="Tech win Logo"
+                                  alt="Neon Trade Logo"
                                   className="h-12 w-auto object-contain relative z-10 filter drop-shadow-[0_0_6px_rgba(253,210,117,0.35)] pointer-events-none"
                                   referrerPolicy="no-referrer"
                                   draggable={false}
@@ -5760,7 +5885,7 @@ export default function App() {
                     {/* Visual Disclaimer footer inside lobby */}
                     <div className="px-4 mt-6 text-center select-none opacity-40">
                       <p className="text-[8px] text-neutral-500 font-bold leading-relaxed uppercase">
-                        Tech win lottery and entertainment systems are built for secure entertainment purposes inside the preview. All outcomes are simulated on device.
+                        Neon Trade lottery and entertainment systems are built for secure entertainment purposes inside the preview. All outcomes are simulated on device.
                       </p>
                     </div>
 
@@ -5793,8 +5918,9 @@ export default function App() {
                 onSpinUsed={async () => {
                   const newUsed = usedSpins + 1;
                   setUsedSpins(newUsed);
-                  if (uid) {
-                    const userDocRef = doc(db, 'users', uid);
+                  const userUid = auth.currentUser?.uid;
+                  if (userUid) {
+                    const userDocRef = doc(db, 'users', userUid);
                     await updateDoc(userDocRef, { usedSpins: newUsed });
                   }
                 }}
@@ -5805,122 +5931,241 @@ export default function App() {
                 initial={{ opacity: 0, scale: 0.98 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.98 }}
-                className="w-full flex-1 overflow-y-auto pb-24 px-4 pt-6"
+                className="w-full flex-1 overflow-y-auto pb-6 px-4 pt-6"
               >
                 {currentTab === 'promo' ? (
-                  <div className="space-y-5 pb-8">
-                    {/* Header */}
-                    <div id="promo-header" className="flex items-center justify-between pb-3 border-b border-white/5 mb-6">
+                  <div className="space-y-5 pb-4">
+                    {/* Premium Header */}
+                    <div id="promo-header" className="flex items-center justify-between pb-3.5 border-b border-white/5 mb-4">
                       <div className="flex flex-col text-left">
-                        <h2 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-[#ffe49e] via-[#ffbb0d] to-[#e1a500] uppercase tracking-wider font-sans">
+                        <h2 className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-[#ffe49e] via-[#ffbb0d] to-[#e1a500] uppercase tracking-wide font-sans">
                           {selectedLang === 'en' ? 'Promotions & Offers' : 'प्रचार और ऑफर'}
                         </h2>
-                        <span className="text-[10px] text-[#ffbb0d]/80 font-extrabold tracking-[0.15em] uppercase font-sans mt-0.5">EXCLUSIVE REWARDS VAULT</span>
+                        <span className="text-[9px] text-[#ffbb0d]/70 font-extrabold tracking-[0.12em] uppercase font-sans mt-0.5">EXCLUSIVE REWARDS CENTRE</span>
                       </div>
-                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#ffbb0d]/10 border border-[#ffbb0d]/20">
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#ffbb0d]/10 border border-[#ffbb0d]/20 shrink-0">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-                        <span className="text-[9px] text-[#ffbb0d] font-black uppercase tracking-widest leading-none">LIVE</span>
+                        <span className="text-[8px] text-[#ffbb0d] font-black uppercase tracking-widest leading-none">LIVE</span>
                       </div>
                     </div>
 
-                    {/* Premium Promo Card 1: Invite Wheel of Fortune */}
-                    <div className="bg-gradient-to-b from-[#2a0d0e] via-[#1a0506] to-[#0f0102] rounded-2xl overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.6)] border border-white/5 hover:border-[#ffbb0d]/30 transition-all duration-300 relative group flex flex-col">
-                      <div className="relative h-[150px] w-full overflow-hidden">
-                        <img 
-                          src="https://i.ibb.co/ychmgkdn/file-00000000ef40720888a7368f6c1e9162.png" 
-                          alt="Lucky Spin Wheel Promo"
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
-                          referrerPolicy="no-referrer"
-                        />
-                        {/* Shimmer sweep overlay */}
-                        <div className="absolute top-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/10 to-transparent animate-shimmer pointer-events-none" />
-                        <div className="absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-[#1a0506] to-transparent pointer-events-none" />
-                        <span className="absolute top-3 left-3 px-3 py-1 rounded-full text-[9px] font-black tracking-widest uppercase bg-gradient-to-r from-[#ff3a3a] to-[#d31c1c] text-white shadow-lg border border-white/10">
-                          {selectedLang === 'en' ? 'HOT EVENT' : 'लोकप्रिय इवेंट'}
-                        </span>
-                      </div>
-                      <div className="p-5 flex flex-col pt-2">
-                        <h3 className="text-base font-black text-white flex items-center gap-1.5 mb-1.5">
-                          <span className="text-[#ffbb0d]">⚡</span> {selectedLang === 'en' ? 'Super Lucky Wheel Bonus' : 'सुपर लकी व्हील बोनस'}
-                        </h3>
-                        <p className="text-[11px] text-neutral-400 leading-relaxed font-semibold mb-4">
-                          {selectedLang === 'en' 
-                            ? 'Invite active members to spin the golden wheel and seize cash jackpots up to ₹10,000 instantly!' 
-                            : 'सक्रिय सदस्यों को स्वर्ण चक्र घुमाने के लिए आमंत्रित करें और तुरंत ₹10,000 तक का नकद जैकपॉट प्राप्त करें!'}
-                        </p>
-                        <button 
-                          onClick={() => setCurrentTab('wheel')} 
-                          className="w-full py-3 rounded-xl bg-gradient-to-r from-[#ffd36c] via-[#ffbb0d] to-[#db9c00] text-black font-extrabold uppercase text-xs tracking-wider shadow-[0_4px_15px_rgba(255,187,13,0.2)] transition-all active:scale-[0.98] leading-none cursor-pointer"
-                        >
-                          {selectedLang === 'en' ? 'Spin Wheel Now' : 'अभी व्हील घुमाएं'}
-                        </button>
-                      </div>
+                    {/* Interactive Filter Pills */}
+                    <div className="flex items-center gap-2 overflow-x-auto pb-1 mb-2 scrollbar-none select-none">
+                      <button
+                        onClick={() => { playWingoSound(clickAudioRef); setPromoFilter('all'); }}
+                        className={`px-3.5 py-1.5 rounded-full font-sans text-[11px] font-black uppercase tracking-wider transition-all duration-200 cursor-pointer shrink-0 border flex items-center gap-1.5 ${
+                          promoFilter === 'all'
+                            ? 'bg-[#ffe49e] text-[#421d00] border-[#ffe49e] shadow-[0_2px_10px_rgba(255,228,158,0.2)] scale-[1.02]'
+                            : 'bg-black/45 text-neutral-400 border-white/5 hover:border-white/10 hover:text-white'
+                        }`}
+                      >
+                        <Sparkles className="h-3 w-3 shrink-0" />
+                        <span>{selectedLang === 'en' ? 'All' : 'सभी'}</span>
+                      </button>
+                      <button
+                        onClick={() => { playWingoSound(clickAudioRef); setPromoFilter('hot'); }}
+                        className={`px-3.5 py-1.5 rounded-full font-sans text-[11px] font-black uppercase tracking-wider transition-all duration-200 cursor-pointer shrink-0 border flex items-center gap-1.5 ${
+                          promoFilter === 'hot'
+                            ? 'bg-[#ff3a3a] text-white border-[#ff3a3a] shadow-[0_2px_10px_rgba(255,58,58,0.2)] scale-[1.02]'
+                            : 'bg-black/45 text-neutral-400 border-white/5 hover:border-white/10 hover:text-white'
+                        }`}
+                      >
+                        <Flame className="h-3 w-3 shrink-0 animate-pulse" />
+                        <span>{selectedLang === 'en' ? 'Hot' : 'हॉट'}</span>
+                      </button>
+                      <button
+                        onClick={() => { playWingoSound(clickAudioRef); setPromoFilter('deposit'); }}
+                        className={`px-3.5 py-1.5 rounded-full font-sans text-[11px] font-black uppercase tracking-wider transition-all duration-200 cursor-pointer shrink-0 border flex items-center gap-1.5 ${
+                          promoFilter === 'deposit'
+                            ? 'bg-[#00f099] text-black border-[#00f099] shadow-[0_2px_10px_rgba(0,240,153,0.2)] scale-[1.02]'
+                            : 'bg-black/45 text-neutral-400 border-white/5 hover:border-white/10 hover:text-white'
+                        }`}
+                      >
+                        <CreditCard className="h-3 w-3 shrink-0" />
+                        <span>{selectedLang === 'en' ? 'Deposit' : 'डिपोज़िट'}</span>
+                      </button>
+                      <button
+                        onClick={() => { playWingoSound(clickAudioRef); setPromoFilter('invite'); }}
+                        className={`px-3.5 py-1.5 rounded-full font-sans text-[11px] font-black uppercase tracking-wider transition-all duration-200 cursor-pointer shrink-0 border flex items-center gap-1.5 ${
+                          promoFilter === 'invite'
+                            ? 'bg-purple-500 text-white border-purple-500 shadow-[0_2px_10px_rgba(168,85,247,0.2)] scale-[1.02]'
+                            : 'bg-black/45 text-neutral-400 border-white/5 hover:border-white/10 hover:text-white'
+                        }`}
+                      >
+                        <Users className="h-3 w-3 shrink-0" />
+                        <span>{selectedLang === 'en' ? 'Invite' : 'इनवाइट'}</span>
+                      </button>
                     </div>
 
-                    {/* Premium Promo Card 2: Deposit 100% Double Match */}
-                    <div className="bg-gradient-to-b from-[#2a0d0e] via-[#1a0506] to-[#0f0102] rounded-2xl overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.6)] border border-white/5 hover:border-[#ffbb0d]/30 transition-all duration-300 relative group flex flex-col">
-                      <div className="relative h-[150px] w-full overflow-hidden">
-                        <img 
-                          src="https://i.ibb.co/9HrkL5P8/file-000000005d70720890ec1f922e09e1c6.png" 
-                          alt="First Deposit Promo"
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
-                          referrerPolicy="no-referrer"
-                        />
-                        <div className="absolute top-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/10 to-transparent animate-shimmer pointer-events-none" />
-                        <div className="absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-[#1a0506] to-transparent pointer-events-none" />
-                        <span className="absolute top-3 left-3 px-3 py-1 rounded-full text-[9px] font-black tracking-widest uppercase bg-gradient-to-r from-[#ffb415] to-[#df9100] text-black shadow-lg">
-                          {selectedLang === 'en' ? 'MEGA BONUS' : 'मेगा बोनस'}
-                        </span>
-                      </div>
-                      <div className="p-5 flex flex-col pt-2">
-                        <h3 className="text-base font-black text-white flex items-center gap-1.5 mb-1.5">
-                          <span className="text-[#ffbb0d]">💎</span> {selectedLang === 'en' ? '100% First Deposit Match' : '100% प्रथम जमा बोनस'}
-                        </h3>
-                        <p className="text-[11px] text-neutral-400 leading-relaxed font-semibold mb-4">
-                          {selectedLang === 'en' 
-                            ? 'Double your first automated deposit from ₹200 up to ₹10,000 instantly to maximize your wager potential!' 
-                            : 'अपनी दांव क्षमता को अधिकतम करने के लिए ₹200 से ₹10,000 तक की अपनी पहली स्वचालित जमा राशि को तुरंत दोगुना करें!'}
-                        </p>
-                        <button 
-                          onClick={() => setShowDepositScreen(true)} 
-                          className="w-full py-3 rounded-xl bg-gradient-to-r from-[#ffe5a4] via-[#ffbb0d] to-[#db9c00] text-black font-extrabold uppercase text-xs tracking-wider shadow-[0_4px_15px_rgba(255,187,13,0.2)] transition-all active:scale-[0.98] leading-none cursor-pointer"
-                        >
-                          {selectedLang === 'en' ? 'Deposit Now & Double' : 'अभी जमा करें और दोगुना पाएं'}
-                        </button>
-                      </div>
-                    </div>
+                    {/* Promo Cards Feed */}
+                    <div className="space-y-4">
+                      {/* Premium Promo Card 1: Invite Wheel of Fortune */}
+                      {(promoFilter === 'all' || promoFilter === 'hot' || promoFilter === 'invite') && (
+                        <div className="bg-gradient-to-b from-[#341113] via-[#1a0506] to-[#0d0203] rounded-2xl overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.65)] border border-[#ffbb0d]/15 hover:border-[#ffbb0d]/40 transition-all duration-300 relative group flex flex-col">
+                          <div className="relative h-[130px] w-full overflow-hidden shrink-0">
+                            <img 
+                              src="https://i.ibb.co/ychmgkdn/file-00000000ef40720888a7368f6c1e9162.png" 
+                              alt="Lucky Spin Wheel Promo"
+                              className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500"
+                              referrerPolicy="no-referrer"
+                              loading="lazy"
+                            />
+                            <div className="absolute top-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/10 to-transparent animate-shimmer pointer-events-none" />
+                            <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-[#1a0506] to-transparent pointer-events-none" />
+                            <span className="absolute top-3 left-3 px-2.5 py-1 rounded-full text-[8.5px] font-black tracking-wider uppercase bg-[#ff3a3a] text-white shadow-lg border border-white/10 flex items-center gap-1">
+                              <span className="w-1 h-1 rounded-full bg-white animate-ping" />
+                              {selectedLang === 'en' ? 'HOT EVENT' : 'लोकप्रिय इवेंट'}
+                            </span>
+                          </div>
 
-                    {/* Premium Promo Card 3: Agency Commission Recurrent Yield */}
-                    <div className="bg-gradient-to-b from-[#2a0d0e] via-[#1a0506] to-[#0f0102] rounded-2xl overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.6)] border border-white/5 hover:border-[#ffbb0d]/30 transition-all duration-300 relative group flex flex-col">
-                      <div className="relative h-[150px] w-full overflow-hidden">
-                        <img 
-                          src="https://i.ibb.co/kgytxgB6/file-000000000ea87208926fdbf263bfa8a0.png" 
-                          alt="Agency Recurrent Commission Promo"
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
-                          referrerPolicy="no-referrer"
-                        />
-                        <div className="absolute top-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/10 to-transparent animate-shimmer pointer-events-none" />
-                        <div className="absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-[#1a0506] to-transparent pointer-events-none" />
-                        <span className="absolute top-3 left-3 px-3 py-1 rounded-full text-[9px] font-black tracking-widest uppercase bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg border border-white/10">
-                          {selectedLang === 'en' ? 'VIP EXCLUSIVE' : 'वीआईपी एक्सक्लूसिव'}
-                        </span>
-                      </div>
-                      <div className="p-5 flex flex-col pt-2">
-                        <h3 className="text-base font-black text-white flex items-center gap-1.5 mb-1.5">
-                          <span className="text-[#ffbb0d]">⭐️</span> {selectedLang === 'en' ? 'Lifetime Agent Commission' : 'आजीवन एजेंट कमीशन'}
-                        </h3>
-                        <p className="text-[11px] text-neutral-400 leading-relaxed font-semibold mb-4">
-                          {selectedLang === 'en' 
-                            ? 'Build passive recurring streams! Earn up to 0.6% on every single bet placed by your downline players forever.' 
-                            : 'आजीवन रिकरिंग आय बनाएं! अपने डाउनलाइन खिलाड़ियों द्वारा लगाए गए प्रत्येक दांव पर हमेशा 0.6% तक कमाएं।'}
-                        </p>
-                        <button 
-                          onClick={() => setCurrentTab('earn')} 
-                          className="w-full py-3 rounded-xl bg-gradient-to-r from-[#ffd36c] via-[#ffbb0d] to-[#db9c00] text-black font-extrabold uppercase text-xs tracking-wider shadow-[0_4px_15px_rgba(255,187,13,0.2)] transition-all active:scale-[0.98] leading-none cursor-pointer"
-                        >
-                          {selectedLang === 'en' ? 'Invite & Earn Permanent Cash' : 'आमंत्रित करें और स्थायी नकद कमाएं'}
-                        </button>
-                      </div>
+                          <div className="px-4 pb-4 pt-3 flex flex-col">
+                            <div className="flex items-center justify-between gap-2 mb-1.5">
+                              <h3 className="text-[14.5px] font-black text-white leading-snug">
+                                {selectedLang === 'en' ? 'Super Lucky Wheel Bonus' : 'सुपर लकी व्हील बोनस'}
+                              </h3>
+                              <span className="text-[9px] bg-amber-400/10 text-amber-400 font-black border border-amber-400/20 px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0">
+                                {selectedLang === 'en' ? 'Win up to ₹10K' : '₹10K तक जीतें'}
+                              </span>
+                            </div>
+
+                            {/* Structured Highlights instead of emojis */}
+                            <div className="bg-black/30 rounded-xl p-2.5 space-y-1.5 border border-white/5 mb-3.5">
+                              <div className="flex items-center gap-2 text-left">
+                                <Zap className="h-3.5 w-3.5 text-[#ffbb0d] shrink-0" />
+                                <p className="text-[10.5px] font-bold text-neutral-300 leading-normal">
+                                  {selectedLang === 'en' ? '1 Free Spin coupon per qualified active user invite' : 'प्रति योग्य सक्रिय उपयोगकर्ता इनवाइट पर 1 फ्री स्पिन कूपन'}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2 text-left">
+                                <Coins className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                                <p className="text-[10.5px] font-bold text-neutral-300 leading-normal">
+                                  {selectedLang === 'en' ? '100% Guaranteed payouts loaded directly in rewards' : 'पुरस्कारों में सीधे 100% गारंटीकृत भुगतान लोड किया गया'}
+                                </p>
+                              </div>
+                            </div>
+
+                            <button 
+                              onClick={() => setCurrentTab('wheel')} 
+                              className="w-full py-2.5 rounded-full bg-gradient-to-r from-[#ffd36c] via-[#ffbb0d] to-[#db9c00] hover:brightness-110 active:brightness-95 text-[#421d00] font-black uppercase text-[11.5px] tracking-wider shadow-[0_4px_12px_rgba(255,187,13,0.25)] transition-all active:scale-[0.98] leading-none cursor-pointer flex items-center justify-center gap-2"
+                            >
+                              <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                              {selectedLang === 'en' ? 'Spin Wheel Now' : 'अभी व्हील घुमाएं'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Premium Promo Card 2: Deposit 100% Double Match */}
+                      {(promoFilter === 'all' || promoFilter === 'deposit') && (
+                        <div className="bg-gradient-to-b from-[#341113] via-[#1a0506] to-[#0d0203] rounded-2xl overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.65)] border border-[#00f099]/15 hover:border-[#00f099]/40 transition-all duration-300 relative group flex flex-col">
+                          <div className="relative h-[130px] w-full overflow-hidden shrink-0">
+                            <img 
+                              src="https://i.ibb.co/9HrkL5P8/file-000000005d70720890ec1f922e09e1c6.png" 
+                              alt="First Deposit Promo"
+                              className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500"
+                              referrerPolicy="no-referrer"
+                              loading="lazy"
+                            />
+                            <div className="absolute top-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/10 to-transparent animate-shimmer pointer-events-none" />
+                            <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-[#1a0506] to-transparent pointer-events-none" />
+                            <span className="absolute top-3 left-3 px-2.5 py-1 rounded-full text-[8.5px] font-black tracking-wider uppercase bg-[#00f099] text-black shadow-lg border border-black/10 flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-black animate-pulse" />
+                              {selectedLang === 'en' ? 'MEGA BONUS' : 'मेगा बोनस'}
+                            </span>
+                          </div>
+
+                          <div className="px-4 pb-4 pt-3 flex flex-col">
+                            <div className="flex items-center justify-between gap-2 mb-1.5">
+                              <h3 className="text-[14.5px] font-black text-white leading-snug">
+                                {selectedLang === 'en' ? '100% First Deposit Match' : '100% प्रथम जमा बोनस'}
+                              </h3>
+                              <span className="text-[9px] bg-emerald-400/10 text-[#00f099] font-black border border-[#00f099]/20 px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0">
+                                {selectedLang === 'en' ? 'Double Cash Match' : 'दोगुना कैश पाएं'}
+                              </span>
+                            </div>
+
+                            {/* Structured Highlights */}
+                            <div className="bg-black/30 rounded-xl p-2.5 space-y-1.5 border border-white/5 mb-3.5">
+                              <div className="flex items-center gap-2 text-left">
+                                <CreditCard className="h-3.5 w-3.5 text-[#00f099] shrink-0" />
+                                <p className="text-[10.5px] font-bold text-neutral-300 leading-normal">
+                                  {selectedLang === 'en' ? 'Deposit ₹200 to ₹10,000 to double your gaming tokens' : 'गेमिंग टोकन दोगुना करने के लिए ₹200 से ₹10,000 जमा करें'}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2 text-left">
+                                <Flame className="h-3.5 w-3.5 text-[#00f099] shrink-0 animate-pulse" />
+                                <p className="text-[10.5px] font-bold text-neutral-300 leading-normal">
+                                  {selectedLang === 'en' ? 'Safely credited instantly inside your game wallet space' : 'सुरक्षित रूप से और तुरंत आपके गेम वॉलेट में क्रेडिट किया गया'}
+                                </p>
+                              </div>
+                            </div>
+
+                            <button 
+                              onClick={() => { playWingoSound(clickAudioRef); setShowDepositScreen(true); }} 
+                              className="w-full py-2.5 rounded-full bg-gradient-to-r from-[#00f099] to-[#00b372] hover:brightness-110 active:brightness-95 text-black font-black uppercase text-[11.5px] tracking-wider shadow-[0_4px_12px_rgba(0,240,153,0.2)] transition-all active:scale-[0.98] leading-none cursor-pointer flex items-center justify-center gap-2"
+                            >
+                              <CreditCard className="h-3.5 w-3.5 shrink-0" />
+                              {selectedLang === 'en' ? 'Deposit Now & Double' : 'अभी जमा करें और दोगुना पाएं'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Premium Promo Card 3: Agency Commission Recurrent Yield */}
+                      {(promoFilter === 'all' || promoFilter === 'invite') && (
+                        <div className="bg-gradient-to-b from-[#341113] via-[#1a0506] to-[#0d0203] rounded-2xl overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.65)] border border-purple-500/15 hover:border-purple-500/40 transition-all duration-300 relative group flex flex-col">
+                          <div className="relative h-[130px] w-full overflow-hidden shrink-0">
+                            <img 
+                              src="https://i.ibb.co/kgytxgB6/file-000000000ea87208926fdbf263bfa8a0.png" 
+                              alt="Agency Recurrent Commission Promo"
+                              className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500"
+                              referrerPolicy="no-referrer"
+                              loading="lazy"
+                            />
+                            <div className="absolute top-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/10 to-transparent animate-shimmer pointer-events-none" />
+                            <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-[#1a0506] to-transparent pointer-events-none" />
+                            <span className="absolute top-3 left-3 px-2.5 py-1 rounded-full text-[8.5px] font-black tracking-wider uppercase bg-[#8b5cf6] text-white shadow-lg border border-white/10 flex items-center gap-1">
+                              <span className="w-1 h-1 rounded-full bg-white animate-pulse" />
+                              {selectedLang === 'en' ? 'VIP EXCLUSIVE' : 'वीआईपी एक्सक्लूसिव'}
+                            </span>
+                          </div>
+
+                          <div className="px-4 pb-4 pt-3 flex flex-col">
+                            <div className="flex items-center justify-between gap-2 mb-1.5">
+                              <h3 className="text-[14.5px] font-black text-white leading-snug">
+                                {selectedLang === 'en' ? 'Lifetime Agent Commission' : 'आजीवन एजेंट कमीशन'}
+                              </h3>
+                              <span className="text-[9px] bg-purple-400/10 text-purple-400 font-black border border-purple-400/20 px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0">
+                                {selectedLang === 'en' ? '0.6% Lifetime Yield' : '0.6% आजीवन यील्ड'}
+                              </span>
+                            </div>
+
+                            {/* Structured Highlights */}
+                            <div className="bg-black/30 rounded-xl p-2.5 space-y-1.5 border border-white/5 mb-3.5">
+                              <div className="flex items-center gap-2 text-left">
+                                <Award className="h-3.5 w-3.5 text-purple-400 shrink-0" />
+                                <p className="text-[10.5px] font-bold text-neutral-300 leading-normal">
+                                  {selectedLang === 'en' ? 'Earn up to 0.6% recursive payouts on every downline player' : 'प्रत्येक डाउनलाइन खिलाड़ी पर 0.6% तक आवर्ती भुगतान प्राप्त करें'}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2 text-left">
+                                <TrendingUp className="h-3.5 w-3.5 text-purple-400 shrink-0" />
+                                <p className="text-[10.5px] font-bold text-neutral-300 leading-normal">
+                                  {selectedLang === 'en' ? 'Build endless streams with instant real-time settlements' : 'त्वरित रीयल-टाइम निपटान के साथ अंतहीन निष्क्रिय धाराएं बनाएं'}
+                                </p>
+                              </div>
+                            </div>
+
+                            <button 
+                              onClick={() => { playWingoSound(clickAudioRef); setCurrentTab('earn'); }} 
+                              className="w-full py-2.5 rounded-full bg-gradient-to-r from-purple-500 to-indigo-600 hover:brightness-110 active:brightness-95 text-white font-black uppercase text-[11.5px] tracking-wider shadow-[0_4px_12px_rgba(139,92,246,0.25)] transition-all active:scale-[0.98] leading-none cursor-pointer flex items-center justify-center gap-2"
+                            >
+                              <Trophy className="h-3.5 w-3.5 shrink-0" />
+                              {selectedLang === 'en' ? 'Invitation Bonus Hub' : 'इनविटेशन बोनस हब'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -6369,11 +6614,11 @@ export default function App() {
                   </div>
                 </div>
 
-                 {/* CENTER BRAND LOGO - Tech win */}
+                 {/* CENTER BRAND LOGO - Neon Trade */}
                  <div className="flex flex-col items-center justify-center my-6 select-none">
                    <img 
                      src={gameLogo} 
-                     alt="Tech win Logo" 
+                     alt="Neon Trade Logo"
                      className="h-24 w-auto object-contain drop-shadow-xl pointer-events-none" 
                      draggable={false}
                      onContextMenu={(e) => e.preventDefault()}
@@ -6408,7 +6653,7 @@ export default function App() {
                           <span className="absolute -inset-0.5 rounded-xl bg-gradient-to-r from-red-500 to-amber-400 opacity-20 blur animate-pulse" />
                           <img
                             src={gameLogo}
-                            alt="Tech win Logo"
+                            alt="Neon Trade Logo"
                             className="h-12 w-auto object-contain relative z-10 filter drop-shadow-[0_0_6px_rgba(253,210,117,0.35)] pointer-events-none"
                             referrerPolicy="no-referrer"
                             draggable={false}

@@ -65,12 +65,27 @@
         "status": { "type": "string" },
         "createdAt": { "type": "object" }
       }
+    },
+    "UserWingoHistory": {
+      "title": "UserWingoHistory",
+      "description": "User specific backup/cache of 500 game results or history for restoration across sessions",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "wingoHistory": { "type": "object" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId", "wingoHistory"]
     }
   },
   "firestore": {
     "/users/{userId}": {
       "schema": "User",
       "description": "Collection of users"
+    },
+    "/user_wingo_history/{userId}": {
+      "schema": "UserWingoHistory",
+      "description": "User specific game play history logs for 500 periods"
     },
     "/wingo_history/{docId}": {
       "schema": "WingoHistory",

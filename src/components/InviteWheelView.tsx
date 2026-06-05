@@ -574,18 +574,18 @@ export default function InviteWheelView({
         </p>
 
         {/* User Record History List Container - Clean professional layout */}
-        {spinHistory.length > 0 && (
-          <div
-            id="container-record-history"
-            className="w-full mt-2 text-left z-20 relative px-1 flex flex-col"
+        <div
+          id="container-record-history"
+          className="w-full mt-2 text-left z-20 relative px-1 flex flex-col pb-8"
+        >
+          <h3
+            id="heading-record"
+            className="text-white text-[20px] font-bold tracking-wide mb-4"
           >
-            <h3
-              id="heading-record"
-              className="text-white text-[20px] font-bold tracking-wide mb-4"
-            >
-              {selectedLang === "en" ? "Record" : "इतिहास"}
-            </h3>
+            {selectedLang === "en" ? "Record" : "इतिहास"}
+          </h3>
 
+          {spinHistory.length > 0 ? (
             <div
               id="list-records"
               className="flex flex-col divide-y divide-white/10"
@@ -620,8 +620,18 @@ export default function InviteWheelView({
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          ) : (
+            <div 
+              id="empty-records-state"
+              className="flex flex-col items-center justify-center py-10 bg-black/15 border border-white/5 rounded-2xl"
+            >
+              <FileText className="w-10 h-10 text-white/10 mb-2.5" />
+              <span className="text-white/40 text-xs font-semibold tracking-wide uppercase">
+                {selectedLang === "en" ? "No record" : "कोई रिकॉर्ड नहीं"}
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Minimal Bottom Win Popup */}

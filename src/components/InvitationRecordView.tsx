@@ -84,7 +84,7 @@ export default function InvitationRecordView({ onClose, selectedLang, uid }: Inv
         </h1>
       </div>
 
-      <div className="p-4 space-y-3 pb-24">
+      <div className="p-4 space-y-3 pb-6">
         {loading ? (
           <div className="flex justify-center p-10">
             <span className="text-white/50 animate-pulse font-bold tracking-widest text-xs uppercase">Loading records...</span>

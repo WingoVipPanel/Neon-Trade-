@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Download, X, ShieldCheck, Share, HelpCircle, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
+const gameLogo = "https://i.ibb.co/rGjxr0hn/file-00000000d308720cab57b8c2210b5b42.png";
+
 export default function QuickInstall() {
   const [showBanner, setShowBanner] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -167,7 +169,7 @@ export default function QuickInstall() {
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-inner relative flex-shrink-0">
                   <img 
-                    src="https://i.ibb.co/LhbR2xX0/file-00000000d8947209aa95cf6b9358b708.png" 
+                    src={gameLogo} 
                     alt="App Logo"
                     className="w-8 h-8 object-contain rounded-md"
                     referrerPolicy="no-referrer"
@@ -251,8 +253,8 @@ export default function QuickInstall() {
               {/* Real Game Logo Container in Modal */}
               <div className="w-24 h-24 bg-gradient-to-br from-slate-50 to-amber-50 p-2.5 rounded-2xl shadow-md border border-slate-100 mb-5 flex items-center justify-center relative">
                 <img 
-                  src="https://i.ibb.co/LhbR2xX0/file-00000000d8947209aa95cf6b9358b708.png" 
-                  alt="Tech win Logo" 
+                  src={gameLogo} 
+                  alt="Neon Trade Logo" 
                   className="w-full h-full object-contain rounded-xl select-none"
                   referrerPolicy="no-referrer"
                 />
@@ -263,7 +265,7 @@ export default function QuickInstall() {
 
               {/* Description */}
               <div className="text-center mb-5">
-                <h4 className="font-extrabold text-slate-900 text-sm">Tech win Standalone App</h4>
+                <h4 className="font-extrabold text-slate-900 text-sm">Neon Trade Standalone App</h4>
                 <p className="text-[11px] text-slate-500 mt-1 leading-relaxed max-w-[260px] mx-auto">
                   Instant launch from your home screen. Uses almost zero cache storage, and opens 3x faster than normal browsing.
                 </p>
