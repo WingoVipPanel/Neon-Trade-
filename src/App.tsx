@@ -21,6 +21,7 @@ import {
   Gamepad2,
   BarChart3,
   Globe,
+  Music,
   Settings,
   Copy,
   Pencil,
@@ -72,9 +73,10 @@ import VipLevelsView from './components/VipLevelsView';
 import InvitationBonusView from './components/InvitationBonusView';
 import InviteWheelView from './components/InviteWheelView';
 import { WingoWinningsModal } from './components/WingoWinningsModal';
+import QuickInstall from './components/QuickInstall';
 
 // Premium background and default assets from our assets directory
-const gameLogo = "https://i.ibb.co/sdNDz4dC/20260522-114413.png";
+const gameLogo = "https://i.ibb.co/LhbR2xX0/file-00000000d8947209aa95cf6b9358b708.png";
 import casinoBg from './assets/images/casino_bg_1779214894050.png';
 
 // 8 Indian Casino style realistic player avatars shown in the user's reference picture
@@ -105,8 +107,8 @@ const VIP_ICONS: { [key: number]: string } = {
 const ANNOUNCEMENTS = [
   {
     id: 1,
-    title: "Welcome to Neon Trade",
-    content: "Welcome to Neon Trade! The most professional money-making gaming platform in India. With an advanced agency system and rebates, achieve your dream of financial freedom! We are recruiting agents across India. As long as you have the capability, you set your own salary!",
+    title: "Welcome to Tech win",
+    content: "Welcome to Tech win! The most professional money-making gaming platform in India. With an advanced agency system and rebates, achieve your dream of financial freedom! We are recruiting agents across India. As long as you have the capability, you set your own salary!",
     date: "2025-04-21 12:59:30"
   },
   {
@@ -396,7 +398,7 @@ const translations = {
     phonePlaceholder: 'Enter your phone number',
     passwordPlaceholder: 'Password:8-15 letters and numbers',
     confirmPasswordPlaceholder: 'Enter the password again',
-    referralPlaceholder: 'Invitation code (Optional)',
+    referralPlaceholder: 'Invitation code',
     registerBtn: 'Register',
     loginBtn: 'Connect Login',
     passwordLoginBtn: 'Password Login',
@@ -442,7 +444,7 @@ const translations = {
     phonePlaceholder: 'अपना फोन नंबर दर्ज करें',
     passwordPlaceholder: 'पासवर्ड: 8-15 अक्षर और संख्याएं',
     confirmPasswordPlaceholder: 'पासवर्ड दोबारा दर्ज करें',
-    referralPlaceholder: 'Invitation code (वैकल्पिक)',
+    referralPlaceholder: 'Invitation code',
     registerBtn: 'रजिस्टर करें',
     loginBtn: 'लॉगिन करें',
     passwordLoginBtn: 'पासवर्ड लॉगिन',
@@ -562,6 +564,7 @@ export default function App() {
   const [userLevel, setUserLevel] = useState(0);
   const [claimedVipRewards, setClaimedVipRewards] = useState<number[]>([]);
   const [claimedMonthlyRewards, setClaimedMonthlyRewards] = useState<number[]>([]);
+  const [claimedInvitationBonuses, setClaimedInvitationBonuses] = useState<number[]>([]);
   const [inviteeCount, setInviteeCount] = useState(0);
   const [inviteeDepositCount, setInviteeDepositCount] = useState(0);
   const [usedSpins, setUsedSpins] = useState(0);
@@ -575,6 +578,7 @@ export default function App() {
   const [showAccountSecurityOverlay, setShowAccountSecurityOverlay] = useState(false);
   const [showGiftsOverlay, setShowGiftsOverlay] = useState(false);
   const [showSettingsOverlay, setShowSettingsOverlay] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [newPasswordInput, setNewPasswordInput] = useState('');
   const [confirmPasswordInput, setConfirmPasswordInput] = useState('');
   const [giftCodeInput, setGiftCodeInput] = useState('');
@@ -602,6 +606,16 @@ export default function App() {
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
   const [tempSelectedAvatar, setTempSelectedAvatar] = useState('https://api.dicebear.com/7.x/lorelei/png?seed=Olivia&backgroundColor=ffd275');
 
+  // Single Session Enforcement Logic
+  const getSessionId = () => {
+    let sid = localStorage.getItem('app_session_id');
+    if (!sid) {
+      sid = Math.random().toString(36).substring(2) + Date.now().toString(36);
+      localStorage.setItem('app_session_id', sid);
+    }
+    return sid;
+  };
+
   // Load user data from Firestore on mount with local storage offline fallback
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -613,6 +627,13 @@ export default function App() {
           if (userDoc.exists()) {
             const userData = userDoc.data();
             const phone = userData.phoneNumber;
+            
+            // Set session ID on login to kick others out
+            const sid = getSessionId();
+            if (userData.currentSessionId !== sid) {
+              await updateDoc(userDocRef, { currentSessionId: sid });
+            }
+
             localStorage.setItem('userPhone', phone);
             localStorage.setItem('userUid', firebaseUser.uid);
 
@@ -624,6 +645,7 @@ export default function App() {
             setUserLevel(userData.level || 0);
             setClaimedVipRewards(userData.claimedVipRewards || []);
             setClaimedMonthlyRewards(userData.claimedMonthlyRewards || []);
+            setClaimedInvitationBonuses(userData.claimedInvitationBonuses || []);
             setUsedSpins(userData.usedSpins || 0);
             setAvatar(userData.avatar || AVAILABLE_AVATARS[0]);
             setIsLoggedIn(true);
@@ -656,6 +678,7 @@ export default function App() {
               level: userData.level || 0,
               claimedVipRewards: userData.claimedVipRewards || [],
               claimedMonthlyRewards: userData.claimedMonthlyRewards || [],
+              claimedInvitationBonuses: userData.claimedInvitationBonuses || [],
               avatar: userData.avatar || AVAILABLE_AVATARS[0]
             };
             localStorage.setItem('local_users', JSON.stringify(localUsers));
@@ -713,14 +736,11 @@ export default function App() {
         }
       } else {
         // Not signed in to Firebase Auth
-        const savedPhone = localStorage.getItem('userPhone');
-        if (savedPhone) {
-          // Attempt local fallback for UI snappiness if possible, 
-          // but we usually want them to log in again to get fresh Auth session
-          setIsLoggedIn(false);
-          // localStorage.removeItem('userPhone'); // Optional: force logout if auth gone
-        }
+        setIsLoggedIn(false);
       }
+      setTimeout(() => {
+        setIsInitializing(false);
+      }, 1500);
     });
 
     // Capture referral from URL
@@ -739,6 +759,17 @@ export default function App() {
       setClaimedGifts([]);
       return;
     }
+
+    // Real-time invitation tracking
+    const qReferrals = query(collection(db, "users"), where("referrer", "==", uid));
+    const unsubReferrals = onSnapshot(qReferrals, (snap) => {
+      setInviteeCount(snap.size);
+      const depositedList = snap.docs.filter(docSnap => {
+        const d = docSnap.data();
+        return (parseFloat(d.totalDeposits) || 0) >= 200 || (parseFloat(d.balance) || 0) >= 200;
+      });
+      setInviteeDepositCount(depositedList.length);
+    });
     const qGifts = query(
       collection(db, 'giftClaims'),
       where('userId', '==', auth.currentUser.uid)
@@ -759,6 +790,18 @@ export default function App() {
     const unsubUser = onSnapshot(doc(db, 'users', auth.currentUser.uid), (docSnap) => {
       if (docSnap.exists()) {
         const userData = docSnap.data();
+        
+        // Single session enforcement: if another device logged in, logout this one
+        const sid = localStorage.getItem('app_session_id');
+        if (userData.currentSessionId && sid && userData.currentSessionId !== sid) {
+          console.warn("Session mismatch: logging out current device (Another device logged in).");
+          (async () => {
+             await signOut(auth);
+             window.location.reload(); // Force refresh to clear all states
+          })();
+          return;
+        }
+
         setBalance(userData.balance || 0);
         setNickname(userData.nickname || 'Member');
         setAvatar(userData.avatar || userData.avatarURL || '');
@@ -770,8 +813,9 @@ export default function App() {
     return () => {
       unsubGifts();
       unsubUser();
+      unsubReferrals();
     };
-  }, [isLoggedIn, db]);
+  }, [isLoggedIn, db, uid]);
 
   // Synchronize dynamic state mutations back to local_users storage for offline resiliency
   useEffect(() => {
@@ -965,10 +1009,10 @@ export default function App() {
       notifs = [
         {
           id: 'welcome_' + Date.now(),
-          titleEn: '🎉 Welcome to Neon Trade!',
-          titleHi: '🎉 Neon Trade में आपका स्वागत है!',
-          contentEn: 'Thank you for registering on Neon Trade. Win up to ₹1,000,000, claim high rebate rewards, spin the wheel, and invite your friends to earn unlimited bonuses!',
-          contentHi: 'Neon Trade पर पंजीकरण करने के लिए धन्यवाद। ₹1,000,000 तक जीतें, उच्च रिबेट पुरस्कार प्राप्त करें, व्हील घुमाएं और असीमित बोनस अर्जित करने के लिए अपने दोस्तों को आमंत्रित करें!',
+          titleEn: '🎉 Welcome to Tech win!',
+          titleHi: '🎉 Tech win में आपका स्वागत है!',
+          contentEn: 'Thank you for registering on Tech win. Win up to ₹1,000,000, claim high rebate rewards, spin the wheel, and invite your friends to earn unlimited bonuses!',
+          contentHi: 'Tech win पर पंजीकरण करने के लिए धन्यवाद। ₹1,000,000 तक जीतें, उच्च रिबेट पुरस्कार प्राप्त करें, व्हील घुमाएं और असीमित बोनस अर्जित करने के लिए अपने दोस्तों को आमंत्रित करें!',
           date: displayTimestamp,
           type: 'welcome',
           unread: false
@@ -1024,8 +1068,8 @@ export default function App() {
       id: 'recharge_rem_' + (Date.now() + 1).toString(),
       titleEn: '💎 Recharge Your Wallet Now!',
       titleHi: '💎 अभी अपना वॉलेट रिचार्ज करें!',
-      contentEn: 'To continue playing and winning big in Neon Trade, please ensure your wallet has sufficient balance. Recharge now to get exclusive first-deposit bonuses!',
-      contentHi: 'Neon Trade में खेलना जारी रखने और बड़ी जीत हासिल करने के लिए, कृपया सुनिश्चित करें कि आपके वॉलेट में पर्याप्त शेष राशि है। विशेष प्रथम-जमा बोनस प्राप्त करने के लिए अभी रिचार्ज करें!',
+      contentEn: 'To continue playing and winning big in Tech win, please ensure your wallet has sufficient balance. Recharge now to get exclusive first-deposit bonuses!',
+      contentHi: 'Tech win में खेलना जारी रखने और बड़ी जीत हासिल करने के लिए, कृपया सुनिश्चित करें कि आपके वॉलेट में पर्याप्त शेष राशि है। विशेष प्रथम-जमा बोनस प्राप्त करने के लिए अभी रिचार्ज करें!',
       date: displayTimestamp,
       type: 'bonus',
       unread: true
@@ -1355,30 +1399,18 @@ export default function App() {
   // WINGO INTERACTIVE SYSTEMS STATE
   const [wingoSoundEnabled, setWingoSoundEnabled] = useState<boolean>(true);
 
-  const countdownAudioRef = useRef<HTMLAudioElement | null>(null);
+  const countdownAudioRef = useRef<any>(null);
+  const clickAudioRef = useRef<any>(null);
+  const winAudioRef = useRef<any>(null);
+  const lossAudioRef = useRef<any>(null);
   const lastTriggeredPeriodRef = useRef<string | null>(null);
 
   useEffect(() => {
-    const audio = new Audio("https://www.image2url.com/r2/default/audio/1779933779792-380c25a2-37af-49eb-b4ea-7209307b1162.mp3");
-    audio.preload = "metadata";
-    countdownAudioRef.current = audio;
-
-    return () => {
-      audio.pause();
-      audio.src = ""; // Clear source to help release resources
-    };
+    // Audio removed
   }, []);
 
   const toggleWingoSound = () => {
-    setWingoSoundEnabled(prev => {
-      const newVal = !prev;
-      try {
-        localStorage.setItem('wingo_sound_enabled', String(newVal));
-      } catch (e) {
-        console.warn(e);
-      }
-      return newVal;
-    });
+    setWingoSoundEnabled(prev => !prev);
   };
 
   const [wingoTimers, setWingoTimers] = useState<{ [key: string]: number }>({
@@ -1466,12 +1498,16 @@ export default function App() {
 
   const [chartPage, setChartPage] = useState(1);
   const [historyPage, setHistoryPage] = useState(1);
+  const [myHistoryPage, setMyHistoryPage] = useState(1);
   const [socketConnected, setSocketConnected] = useState(false);
-  const [activeWingoRoom, setActiveWingoRoom] = useState<string | null>('30s');
+  const [activeWingoRoom, setActiveWingoRoom] = useState<string | null>(null);
+  const [isInitializing, setIsInitializing] = useState(true);
 
-  // Reset history page when room changes
+  // Reset history pages when room changes
   useEffect(() => {
     setHistoryPage(1);
+    setChartPage(1);
+    setMyHistoryPage(1);
   }, [activeWingoRoom]);
   const [wingoBetOption, setWingoBetOption] = useState<string | number | null>(null);
   const [showWingoBetModal, setShowWingoBetModal] = useState(false);
@@ -1511,36 +1547,32 @@ export default function App() {
   // Load global wingoHistory from Firestore on mount
   useEffect(() => {
     const fetchGlobalHistory = async () => {
+      if (!db) return;
       try {
-        const rooms = ['30s', '1m', '3m', '5m'];
         const newHistoryState: any = { '30s': [], '1m': [], '3m': [], '5m': [] };
         let hasData = false;
 
-        for (const room of rooms) {
-          const q = query(
-            collection(db, 'wingo_history'),
-            where('room', '==', room),
-            orderBy('serverTimestamp', 'desc'),
-            limit(500)
-          );
-          const snap = await getDocs(q);
-          const list: any[] = [];
-          snap.forEach(docSnapshot => {
-            const data = docSnapshot.data();
-            list.push({
+        const q = query(
+          collection(db, 'wingo_history'),
+          orderBy('serverTimestamp', 'desc'),
+          limit(4000)
+        );
+        const snap = await getDocs(q);
+        
+        snap.forEach(docSnapshot => {
+          const data = docSnapshot.data();
+          const room = data.room;
+          if (room && newHistoryState[room] && newHistoryState[room].length < 500) {
+            newHistoryState[room].push({
               period: data.period,
               number: data.number,
               color: data.color,
               size: data.size,
               timestamp: data.serverTimestamp?.toDate?.()?.toISOString() || new Date().toISOString()
             });
-          });
-
-          if (list.length > 0) {
-            newHistoryState[room] = list;
             hasData = true;
           }
-        }
+        });
 
         if (hasData) {
           setWingoHistory(newHistoryState);
@@ -1612,6 +1644,90 @@ export default function App() {
     }
   };
 
+  // Background cleanup: Resolve any pending bets that have a matching result in wingoHistory
+  useEffect(() => {
+    const timer = setInterval(() => {
+        setMyWingoBets(prev => {
+            let changed = false;
+            const newState = { ...prev };
+            
+            for (const room of ['30s', '1m', '3m', '5m']) {
+                const history = wingoHistory[room] || [];
+                const bets = prev[room] || [];
+                
+                const updatedBets = bets.map(b => {
+                    if (!b.resolved) {
+                        const match = history.find(h => h.period === b.period && h.number !== -1);
+                        if (match) {
+                            changed = true;
+                            let userWon = false;
+                            const rNum = match.number;
+                            const rCol = match.color;
+                            const rSize = match.size;
+                            const opt = b.userChoice;
+
+                            if (typeof opt === 'number') {
+                                if (opt === rNum) userWon = true;
+                            } else if (opt === 'Green') {
+                                if (rCol === 'Green' || rCol === 'Green+Violet') userWon = true;
+                            } else if (opt === 'Red') {
+                                if (rCol === 'Red' || rCol === 'Red+Violet') userWon = true;
+                            } else if (opt === 'Violet') {
+                                if (['Violet','Green+Violet','Red+Violet'].includes(rCol)) userWon = true;
+                            } else if (opt === 'Big') {
+                                if (rSize === 'Big') userWon = true;
+                            } else if (opt === 'Small') {
+                                if (rSize === 'Small') userWon = true;
+                            }
+                            
+                            // Also update Firestore if needed
+                            const userUid = auth.currentUser?.uid;
+                            if (userUid && db) {
+                                const qry = query(
+                                    collection(db, 'wingoBets'),
+                                    where('userId', '==', userUid),
+                                    where('room', '==', room),
+                                    where('period', '==', b.period),
+                                    where('resolved', '==', false)
+                                );
+                                getDocs(qry).then(snap => {
+                                    snap.forEach(d => {
+                                        updateDoc(d.ref, {
+                                            resolved: true,
+                                            winLoss: userWon ? 'Win' : 'Loss',
+                                            drawNumber: rNum,
+                                            drawColor: rCol,
+                                            drawSize: rSize
+                                        }).catch(() => {});
+                                    });
+                                }).catch(() => {});
+                            }
+
+                            return {
+                                ...b,
+                                resolved: true,
+                                winLoss: userWon ? 'Win' as const : 'Loss' as const,
+                                number: rNum,
+                                color: rCol,
+                                size: rSize
+                            };
+                        }
+                    }
+                    return b;
+                });
+                
+                if (changed) {
+                    newState[room] = updatedBets;
+                }
+            }
+            
+            return changed ? newState : prev;
+        });
+    }, 10000); // Check every 10s
+    
+    return () => clearInterval(timer);
+  }, [wingoHistory, isLoggedIn]);
+
   useEffect(() => {
     const user = auth.currentUser;
     if (isLoggedIn && db && user) {
@@ -1621,6 +1737,7 @@ export default function App() {
 
   const handleRandomWingoSelection = () => {
     if (wingoRandomizing || wingoIsSpinning) return;
+    playWingoSound(clickAudioRef);
     setWingoRandomizing(true);
     let count = 0;
     const maxCount = 40; // Medium shuffle iterations
@@ -1651,77 +1768,34 @@ export default function App() {
   const activeTimer = wingoTimers[activeWingoRoom || '30s'] || 0;
   const isBettingDisabled = activeTimer <= 5 && activeTimer > 0;
 
-
   useEffect(() => {
     if (showWingoBetModal && activeTimer <= 5 && activeTimer > 0) {
       setShowWingoBetModal(false);
     }
   }, [activeTimer, showWingoBetModal]);
 
+  const playWingoSound = (audioRef: React.RefObject<any>) => {
+    // Sound removed
+  };
+
   useEffect(() => {
-    const isWingoActive = 
-      currentTab === 'home' && 
-      activeWingoRoom && 
-      ['30s', '1m', '3m', '5m'].includes(activeWingoRoom);
-
-    if (!isWingoActive || !wingoSoundEnabled || !countdownAudioRef.current) {
-      if (countdownAudioRef.current) {
-        countdownAudioRef.current.pause();
-        countdownAudioRef.current.currentTime = 0;
-      }
-      lastTriggeredPeriodRef.current = null;
-      return;
-    }
-
-    const audio = countdownAudioRef.current;
-    const room = activeWingoRoom!;
-
-    if (activeWingoRoom && activeTimer <= 5 && activeTimer > 0) {
-      // Get unique period code for the current game round of this room to track triggers precisely
-      const roomHistoryList = wingoHistory[room] || [];
-      const lastPeriodObj = roomHistoryList.find((h: any) => h.number !== -1) || roomHistoryList[0];
-      let periodCode = 'fallback_' + room;
-      if (lastPeriodObj) {
-        try {
-          const lastPeriod = String(lastPeriodObj.period);
-          if (lastPeriod.length >= 13) {
-            const basePart = lastPeriod.substring(0, 13);
-            const seqPart = lastPeriod.substring(13);
-            const nextSeq = (parseInt(seqPart) + 1).toString().padStart(lastPeriod.length - 13, '0');
-            periodCode = basePart + nextSeq;
-          } else {
-            periodCode = (BigInt(lastPeriod) + 1n).toString();
-          }
-        } catch (e) {
-          periodCode = 'fallback_' + room;
-        }
-      }
-
-      const currentKey = `${room}_${periodCode}`;
-
-      if (lastTriggeredPeriodRef.current !== currentKey) {
-        lastTriggeredPeriodRef.current = currentKey;
-        // Stop any currently playing audio so it resets properly when starting a new round or switching rooms
-        audio.pause();
-        audio.currentTime = 0;
-        audio.play().catch(e => console.warn("Countdown audio play blocked:", e));
-      } else {
-        // Already triggered for this round; let it play naturally to conclusion without resetting or seeking!
-        if (audio.paused) {
-          audio.play().catch(e => console.warn("Countdown audio resume blocked:", e));
-        }
-      }
-    } else {
-      // Not in countdown/drawing zone (betting time), pause and reset
-      audio.pause();
-      audio.currentTime = 0;
-      lastTriggeredPeriodRef.current = null;
-    }
+    // Sound countdown removed
   }, [activeTimer, activeWingoRoom, currentTab, wingoSoundEnabled, wingoHistory]);
 
   const handleWingoBetPlace = (passedOption?: any) => {
     const activeTimer = wingoTimers[activeWingoRoom || '30s'] || 0;
-    if (wingoRandomizing || wingoIsSpinning || (activeTimer <= 5 && activeTimer > 0)) return;
+    
+    // Check if betting is blocked by countdown
+    if (activeTimer <= 5 && activeTimer > 0) {
+      setLobbyToast({ 
+        type: 'info', 
+        text: selectedLang === 'en' ? "Please wait for next period..." : "कृपया अगली अवधि के लिए प्रतीक्षा करें..." 
+      });
+      return;
+    }
+    
+    if (wingoRandomizing || wingoIsSpinning) return;
+    
     if (passedOption !== undefined) {
       setWingoBetOption(passedOption);
     }
@@ -1729,16 +1803,23 @@ export default function App() {
     setWingoBetQuantity(1);
     setWingoMultiplier(wingoOuterMultiplier);
     setShowWingoBetModal(true);
+    // Play button click sound
+    playWingoSound(clickAudioRef);
   };
 
   const localBetsRef = useRef<any[]>([]);
 
   useEffect(() => {
     let active = true;
-    const socket = io();
+    const socket = io({
+      transports: ['websocket'],
+      reconnectionAttempts: 10,
+      timeout: 20000,
+      autoConnect: true
+    });
 
     socket.on('connect', () => {
-       console.log('Socket connected');
+       console.log('Socket connected with ID:', socket.id);
        if (active) setSocketConnected(true);
     });
     socket.on('disconnect', (reason) => {
@@ -1746,7 +1827,7 @@ export default function App() {
        if (active) setSocketConnected(false);
     });
     socket.on('connect_error', (err) => {
-       console.error('Socket connection error:', err);
+       console.error('Socket connection error detail:', err.message, err);
        if (active) setSocketConnected(false);
     });
 
@@ -1774,6 +1855,8 @@ export default function App() {
 
        // resolve bets for this room
        let anyResolved = false;
+       let hasWin = false;
+       let hasLoss = false;
        let newBalanceChange = 0;
        let lastAlert: any = null;
 
@@ -1806,39 +1889,32 @@ export default function App() {
                  }
 
                  b.winLoss = userWon ? 'Win' : 'Loss';
+                 if (userWon) hasWin = true;
+                 else hasLoss = true;
 
                  // Persist resolution in Firestore
                  const userUid = auth.currentUser?.uid;
-                 if (userUid) {
-                   const betDocId = `${userUid}_${room}_${result.period}_${b.userChoice}`; // adding userChoice makes it match creation inside the bet placement
-                   
-                   // actually let's check line 1631 or if we don't have userChoice we just use period (but multiple bets per period possible).
-                   // Let's just use userUid, and fallback if necessary.
-                   updateDoc(doc(db, 'wingoBets', `${userUid}_${room}_${result.period}`), {
-                     resolved: true,
-                     winLoss: userWon ? 'Win' : 'Loss',
-                     drawNumber: rNum,
-                     drawColor: rCol,
-                     drawSize: rSize
-                   }).catch(err => {
-                     console.warn('Update doc wingoBets failed, setting instead:', err);
-                     setDoc(doc(db, 'wingoBets', `${userUid}_${room}_${result.period}`), {
-                       room: room,
-                       period: result.period,
-                       betAmount: b.betAmount,
-                       userChoice: b.userChoice,
-                       userId: userUid,
-                       uid: uid,
-                       timestamp: new Date().toISOString(),
-                       resolved: true,
-                       winLoss: userWon ? 'Win' : 'Loss',
-                       drawNumber: rNum,
-                       drawColor: rCol,
-                       drawSize: rSize,
-                       timestampDisplay: b.timestamp
-                     }, { merge: true }).catch(ee => console.error('Fallback setDoc for wingoBets failed:', ee));
-                   });
+                 if (userUid && db) {
+                   const betsQuery = query(
+                       collection(db, 'wingoBets'),
+                       where('userId', '==', userUid),
+                       where('room', '==', room),
+                       where('period', '==', result.period),
+                       where('resolved', '==', false)
+                   );
+                   getDocs(betsQuery).then(snap => {
+                       snap.forEach(d => {
+                           updateDoc(d.ref, {
+                               resolved: true,
+                               winLoss: userWon ? 'Win' : 'Loss',
+                               drawNumber: rNum,
+                               drawColor: rCol,
+                               drawSize: rSize
+                           }).catch(e => console.error('Resolving bet doc failed:', e));
+                       });
+                   }).catch(e => console.error('Querying unresolved bets failed:', e));
                  }
+                 
                  if (userWon) {
                     const amt = b.betAmount * winMult;
                     newBalanceChange += amt;
@@ -1852,18 +1928,19 @@ export default function App() {
 
        if (anyResolved) {
            localBetsRef.current = updatedLocalBets;
+
            if (newBalanceChange > 0) {
-             setBalance(prev => {
-               const updated = prev + newBalanceChange;
-               const userUid = auth.currentUser?.uid;
-               if (userUid) {
-                 updateDoc(doc(db, 'users', userUid), {
-                   balance: updated,
-                   updatedAt: serverTimestamp()
-                 }).catch(e => console.error('Winnings sync error:', e));
-               }
-               return updated;
-             });
+              setBalance(prev => {
+                const updated = prev + newBalanceChange;
+                const userUid = auth.currentUser?.uid;
+                if (userUid) {
+                  updateDoc(doc(db, 'users', userUid), {
+                    balance: updated,
+                    updatedAt: serverTimestamp()
+                  }).catch(e => console.error('Winnings sync error:', e));
+                }
+                return updated;
+              });
            }
            if (lastAlert) setWingoWinningsAlert(lastAlert);
        }
@@ -1946,6 +2023,7 @@ export default function App() {
 
   const executeWingoBet = () => {
     if (!wingoAgreed) return;
+    playWingoSound(clickAudioRef);
     
     const parsedQuantity = typeof wingoBetQuantity === 'number' ? wingoBetQuantity : (parseInt(wingoBetQuantity as string) || 1);
     const finalBetCost = wingoBetBalanceVal * parsedQuantity * wingoMultiplier;
@@ -1997,7 +2075,9 @@ export default function App() {
 
     // Live sync for Admin Panel
     if (userUid) {
-      setDoc(doc(db, 'wingoBets', `${userUid}_${targetRoom}_${nextPeriod}`), {
+      // Use a more unique ID to avoid overwriting multiple bets in same period
+      const betId = `${userUid}_${targetRoom}_${nextPeriod}_${now.getTime()}_${Math.floor(Math.random() * 1000)}`;
+      setDoc(doc(db, 'wingoBets', betId), {
         room: targetRoom,
         period: nextPeriod,
         betAmount: finalBetCost,
@@ -2042,6 +2122,9 @@ export default function App() {
         [targetRoom]: [newRecord, ...roomBets].slice(0, 500)
       };
     });
+    
+    // Switch to myhistory tab
+    setWingoHistoryTab('myhistory');
 
     // Show big success animation for 4 seconds
     setShowBetSuccessful(true);
@@ -2049,7 +2132,57 @@ export default function App() {
       setShowBetSuccessful(false);
     }, 4000);
 
-    setLobbyToast({ type: 'success', text: selectedLang === 'en' ? "Bet placed! Waiting for the result..." : "शर्त लगाई गई! परिणाम की प्रतीक्षा कर रहे हैं..." });
+    setLobbyToast({ 
+      type: 'success', 
+      text: selectedLang === 'en' ? "Bet Placed Successfully! Check My History." : "सट्टा सफलतापूर्वक लगाया गया! मेरा इतिहास देखें।" 
+    });
+  };
+
+  const handleClaimInvitationBonus = async (tierId: number, reward: number) => {
+    if (!uid) return;
+    if (claimedInvitationBonuses.includes(tierId)) {
+      setLobbyToast({ 
+        type: 'error', 
+        text: selectedLang === 'en' ? 'Bonus already claimed!' : 'बोनस पहले ही लिया जा चुका है!' 
+      });
+      return;
+    }
+
+    try {
+      await runTransaction(db, async (transaction) => {
+        const userRef = doc(db, 'users', uid);
+        const userSnap = await transaction.get(userRef);
+        if (!userSnap.exists()) throw new Error("User not found");
+
+        const currentBalance = Number(userSnap.data().balance || 0);
+        const currentClaims = userSnap.data().claimedInvitationBonuses || [];
+
+        if (currentClaims.includes(tierId)) {
+          throw new Error("Already claimed");
+        }
+
+        transaction.update(userRef, {
+          balance: currentBalance + reward,
+          claimedInvitationBonuses: [...currentClaims, tierId],
+          updatedAt: serverTimestamp()
+        });
+      });
+
+      setClaimedInvitationBonuses(prev => [...prev, tierId]);
+      setBalance(prev => prev + reward);
+      setLobbyToast({ 
+        type: 'success', 
+        text: selectedLang === 'en' 
+          ? `Successfully claimed ₹${reward.toFixed(2)} invitation bonus!` 
+          : `सफलतापूर्वक ₹${reward.toFixed(2)} निमंत्रण बोनस प्राप्त किया!` 
+      });
+    } catch (err: any) {
+      console.error("Error claiming invitation bonus:", err);
+      setLobbyToast({ 
+        type: 'error', 
+        text: selectedLang === 'en' ? 'Failed to claim bonus.' : 'बोनस प्राप्त करने में विफल।' 
+      });
+    }
   };
 
   const t = translations[selectedLang];
@@ -2099,6 +2232,7 @@ export default function App() {
           level: 0,
           claimedVipRewards: [],
           claimedMonthlyRewards: [],
+          claimedInvitationBonuses: [],
           nickname: 'Member' + Math.random().toString(36).substring(7).toUpperCase(),
           avatar: AVAILABLE_AVATARS[0],
           referrer: referralInput || null,
@@ -2204,6 +2338,7 @@ export default function App() {
         errMsgStr.includes('auth/wrong-password') || 
         errMsgStr.includes('auth/user-not-found');
       const isNotAllowed = errCode === 'auth/operation-not-allowed' || errMsgStr.includes('auth/operation-not-allowed');
+      const isNetworkError = errCode === 'auth/network-request-failed' || errMsgStr.includes('auth/network-request-failed');
 
       if (isEmailInUse) {
         errMsg = selectedLang === 'en' ? 'This phone number is already registered.' : 'यह फोन नंबर पहले से पंजीकृत है।';
@@ -2215,6 +2350,10 @@ export default function App() {
         errMsg = selectedLang === 'en' 
           ? 'Registration/Login is currently disabled. Please enable Email/Password auth in your Firebase Console.' 
           : 'पंजीकरण/लॉगिन वर्तमान में अक्षम है। कृपया फायरबेस कंसोल में ईमेल/पासवर्ड प्रमाणीकरण सक्षम करें।';
+      } else if (isNetworkError) {
+        errMsg = selectedLang === 'en'
+          ? `Network error (${errCode || 'connection-failed'}). Please check your internet connection. If you are using Incognito/Private mode, try a normal window as some browsers block Firebase Auth in private mode.`
+          : `नेटवर्क समस्या (${errCode || 'connection-failed'})। कृपया अपना इंटरनेट कनेक्शन जांचें। यदि आप गुप्त/निजी मोड का उपयोग कर रहे हैं, तो सामान्य विंडो आज़माएं।`;
       }
 
       setLoading(false);
@@ -2272,13 +2411,38 @@ export default function App() {
     }
   };
 
+  if (isInitializing) {
+    return (
+      <div className="fixed inset-0 z-[9999] bg-[#0c0a0a] flex flex-col items-center justify-center">
+        <div className="relative w-full h-full max-w-[410px] mx-auto bg-[#0a0a0f] flex flex-col items-center justify-center p-6 gap-6">
+          {/* Pulsing brand logo */}
+          <div className="relative flex items-center justify-center animate-pulse duration-[2000ms]">
+            <img 
+              src={gameLogo} 
+              alt="Tech win" 
+              className="h-24 w-auto object-contain filter drop-shadow-[0_4px_16px_rgba(230,57,70,0.35)] select-none pointer-events-none"
+              referrerPolicy="no-referrer"
+            />
+          </div>
+          {/* Elegant premium loading indicator spin */}
+          <div className="flex flex-col items-center gap-2">
+            <div className="w-8 h-8 rounded-full border-2 border-red-500/20 border-t-red-500 animate-spin" />
+            <span className="text-white/40 text-[10px] uppercase tracking-[3px] font-bold font-sans">
+              Loading
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (isLoggedIn && isAdmin && showAdminView) {
     return <AdminPanelView onLogout={handleLogout} onToggleView={() => setShowAdminView(false)} />;
   }
 
   return (
     <div 
-      className={`relative min-h-screen w-full flex flex-col items-center select-none overflow-x-hidden pt-0 ${activeWingoRoom ? 'pb-0' : 'pb-32'}`}
+      className={`relative min-h-screen w-full flex flex-col items-center select-none overflow-x-hidden pt-0 ${activeWingoRoom ? 'pb-0' : currentTab === 'wheel' ? 'pb-20' : 'pb-32'}`}
       style={{
         backgroundColor: isLoggedIn ? '#260506' : '#0c0a0a',
         fontFamily: "'Inter', sans-serif"
@@ -2941,7 +3105,7 @@ export default function App() {
                         {selectedLang === 'en' ? 'Verified Account' : 'सत्यापित खाता'}
                       </h4>
                       <p className="text-white/40 text-[11px] font-medium">
-                        {selectedLang === 'en' ? 'Secured by Neon Trade Cloud Protection' : 'Neon Trade क्लाउड सुरक्षा द्वारा सुरक्षित'}
+                        {selectedLang === 'en' ? 'Secured by Tech win Cloud Protection' : 'Tech win क्लाउड सुरक्षा द्वारा सुरक्षित'}
                       </p>
                     </div>
                   </div>
@@ -2971,8 +3135,8 @@ export default function App() {
                         <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0 mt-1.5" />
                         <p className="text-white/60 text-[11.5px] leading-relaxed">
                           {selectedLang === 'en' 
-                            ? 'Never share your login credentials or OTP with anyone, including individuals claiming to be Neon Trade staff.' 
-                            : 'अपना लॉगिन क्रेडेंशियल या ओटीपी किसी के साथ साझा न करें, जिसमें Neon Trade स्टाफ होने का दावा करने वाले व्यक्ति भी शामिल हैं।'}
+                            ? 'Never share your login credentials or OTP with anyone, including individuals claiming to be Tech win staff.' 
+                            : 'अपना लॉगिन क्रेडेंशियल या ओटीपी किसी के साथ साझा न करें, जिसमें Tech win स्टाफ होने का दावा करने वाले व्यक्ति भी शामिल हैं।'}
                         </p>
                       </li>
                       <li className="flex items-start gap-3">
@@ -3237,95 +3401,59 @@ export default function App() {
             )}
           </AnimatePresence>
 
-          {/* FULL SCREEN SETTINGS OVERLAY */}
+          {/* SETTINGS OVERLAY - REDESIGNED AS MODAL PER SCREENSHOT */}
           <AnimatePresence>
             {showSettingsOverlay && (
               <motion.div 
-                initial={{ x: '100%' }}
-                animate={{ x: 0 }}
-                exit={{ x: '100%' }}
-                transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                className="fixed inset-0 z-[200] bg-[#4a0f10] flex flex-col font-sans select-none pointer-events-auto"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[300] bg-black/75 flex flex-col items-center justify-center p-6"
               >
-                {/* Header */}
-                <div className="bg-[#4a0f10] h-[55px] flex items-center px-4 border-b border-white/5 shrink-0">
-                  <button 
-                    onClick={() => setShowSettingsOverlay(false)}
-                    className="w-10 h-10 flex items-center justify-center -ml-2 text-white/80 active:scale-95 transition active:bg-white/5 rounded-full cursor-pointer"
-                  >
-                    <ChevronLeft className="h-6 w-6" />
-                  </button>
-                  <h2 className="flex-1 text-center text-white font-bold text-[17px]">
-                    {selectedLang === 'en' ? 'Application Settings' : 'एप्लिकेशन सेटिंग्स'}
-                  </h2>
-                  <div className="w-10 h-10" />
-                </div>
-
-                <div className="flex-1 flex flex-col justify-between px-4 py-6 text-left">
-                  {/* Premium Profile Card */}
-                  <div className="bg-[#5c1c1e] rounded-2xl p-5 border border-white/10 shadow-xl space-y-4">
-                    <h3 className="text-[#ffd275] text-[10px] font-black uppercase tracking-widest border-b border-white/5 pb-2">
-                      {selectedLang === 'en' ? 'ACTIVE SESSION PROFILE' : 'सक्रिय सत्र प्रोफाइल'}
-                    </h3>
-                    
-                    <div className="flex items-center gap-4">
-                      {/* Avatar container with glowing background & active border */}
-                      <div className="relative">
-                        <img 
-                          src={avatar} 
-                          alt="Avatar" 
-                          referrerPolicy="no-referrer"
-                          className="w-16 h-16 rounded-full border-2 border-[#ffd275] bg-[#3d0b0c] p-0.5 object-cover"
-                        />
-                        <div className="absolute bottom-0 right-0 w-4.5 h-4.5 bg-emerald-500 rounded-full border-2 border-[#5c1c1e] flex items-center justify-center" title="Online">
-                          <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
-                        </div>
-                      </div>
-
-                      <div className="flex-1 space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-display font-extrabold text-[16px] text-white tracking-wide">
-                            {nickname}
-                          </span>
-                          <span className="bg-[#ffd275]/10 text-[#ffd275] border border-[#ffd275]/20 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded">
-                            {selectedLang === 'en' ? 'MEMBER' : 'सदस्य'}
-                          </span>
-                        </div>
-                        <p className="font-mono text-xs text-white/50">
-                          UID: <span className="text-[#ffd275]">{uid}</span>
-                        </p>
-                      </div>
-                    </div>
+                <motion.div 
+                  initial={{ scale: 0.9, y: 20 }}
+                  animate={{ scale: 1, y: 0 }}
+                  exit={{ scale: 0.9, y: 20 }}
+                  className="w-full max-w-[310px] bg-[#292929] rounded-[22px] overflow-hidden shadow-2xl border border-white/5"
+                >
+                  {/* Modal Title */}
+                  <div className="h-[64px] flex items-center justify-center border-b border-white/5 mx-6">
+                    <h2 className="text-white font-bold text-[20px]">Settings</h2>
                   </div>
 
-                  {/* Clean regulatory detail if needed, but keeping it empty and centered on logout */}
-                  <div className="flex-1 flex flex-col justify-center items-center py-8">
-                    <div className="w-12 h-12 bg-rose-500/10 rounded-full flex items-center justify-center border border-rose-500/20 mb-3 animate-pulse">
-                      <Lock className="w-5 h-5 text-rose-400" />
-                    </div>
-                    <p className="text-[12px] text-white/40 text-center max-w-[250px] leading-relaxed">
-                      {selectedLang === 'en' 
-                        ? 'Your active session is fully encrypted and secured.' 
-                        : 'आपका सक्रिय सत्र पूरी तरह से एन्क्रिप्टेड और सुरक्षित है।'}
-                    </p>
-                  </div>
-
-                  {/* Polished Logout Action Area */}
-                  <div className="pb-8">
-                    <button 
-                      onClick={() => {
-                        setShowSettingsOverlay(false);
-                        handleLogout();
-                      }}
-                      className="w-full bg-gradient-to-r from-red-600 to-rose-600 text-white font-display font-black text-xs uppercase tracking-widest py-4 px-6 rounded-2xl flex items-center justify-center gap-3 shadow-[0_6px_24px_rgba(220,38,38,0.35)] active:scale-98 active:brightness-90 transition-all cursor-pointer border border-white/10"
-                    >
-                      <LogOut className="w-4.5 h-4.5" />
-                      <span>
-                        {selectedLang === 'en' ? 'LOGOUT SECURITY SESSION' : 'सुरक्षा सत्र से लॉगआउट करें'}
+                  <div className="p-5 pt-7 space-y-3.5">
+                    {/* Language Setting Row */}
+                    <div className="flex items-center gap-4 bg-[#333333] rounded-[14px] px-4.5 py-4 border border-white/5 shadow-inner">
+                      <Globe className="w-5.5 h-5.5 text-[#ffccd1]/80" />
+                      <span className="flex-1 text-white font-semibold text-[16px] tracking-wide">
+                        language
                       </span>
-                    </button>
+                      <button 
+                        onClick={() => {
+                          playWingoSound(clickAudioRef);
+                          setSelectedLang(selectedLang === 'en' ? 'hi' : 'en');
+                        }}
+                        className="bg-[#4d4d4d] px-4 py-1.5 rounded-lg text-white font-bold text-[13px] uppercase border border-white/10 active:scale-95 transition min-w-[50px] text-center"
+                      >
+                        {selectedLang}
+                      </button>
+                    </div>
                   </div>
-                </div>
+                  
+                  {/* Bottom spacer for padding */}
+                  <div className="h-5" />
+                </motion.div>
+
+                {/* Circular Close Button Below Modal */}
+                <button 
+                  onClick={() => {
+                    playWingoSound(clickAudioRef);
+                    setShowSettingsOverlay(false);
+                  }}
+                  className="mt-8 w-11 h-11 rounded-full border-2 border-white/20 flex items-center justify-center bg-black/20 active:scale-90 transition-transform cursor-pointer"
+                >
+                  <X className="w-6 h-6 text-white stroke-[2.5px]" />
+                </button>
               </motion.div>
             )}
           </AnimatePresence>
@@ -3437,7 +3565,7 @@ export default function App() {
               )}
             </AnimatePresence>
 
-            <div className={`relative z-10 w-full max-w-[410px] bg-transparent flex flex-col pt-0 ${activeWingoRoom ? 'pb-0' : 'pb-16'}`}>
+            <div className={`relative z-10 w-full max-w-[410px] bg-transparent flex flex-col pt-0 ${activeWingoRoom ? 'pb-0' : currentTab === 'wheel' ? 'pb-0' : 'pb-16'}`}>
           
           <AnimatePresence mode="wait">
             {currentTab === 'mine' ? (
@@ -3834,14 +3962,24 @@ export default function App() {
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-[11px] text-[#ffbc0d] font-bold uppercase tracking-wider font-mono bg-amber-950/10 px-2 py-0.5 border border-amber-500/10 rounded">
-                          {selectedLang === 'en' ? 'OPTIONS' : 'विकल्प'}
-                        </span>
                         <span className="text-neutral-500 text-sm font-black font-mono">➔</span>
                       </div>
                     </div>
 
                   </div>
+                </div>
+
+                {/* Polished Logout button at the bottom of the content list */}
+                <div className="px-5 mt-6 pb-12">
+                  <button
+                    onClick={() => {
+                      playWingoSound(clickAudioRef);
+                      setShowLogoutConfirm(true);
+                    }}
+                    className="w-full h-[40px] border border-[#ff3a3a] rounded-full flex items-center justify-center text-[#ff3a3a] font-medium text-[15px] active:scale-95 transition-all cursor-pointer"
+                  >
+                    Log out
+                  </button>
                 </div>
 
               </motion.div>
@@ -3856,13 +3994,13 @@ export default function App() {
                 {/* 1. Interactive App Header */}
                 {!activeWingoRoom && (
                   <>
-                    <div className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-[410px] flex items-center justify-between px-3.5 py-2.5 bg-[#4d1213] border-b border-[#ffd275]/10 select-none shadow-[0_4px_25px_rgba(0,0,0,0.6)] z-50">
+                    <div className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-[410px] flex items-center justify-between px-3.5 py-1.5 bg-[#4d1213] border-b border-[#ffd275]/10 select-none shadow-[0_4px_25px_rgba(0,0,0,0.6)] z-50">
                       <div className="flex items-center gap-2">
                       <div className="relative flex items-center justify-center">
                         <img 
                           src={gameLogo} 
-                          alt="Neon Trade Brand Logo" 
-                          className="h-9 w-auto object-contain select-none filter drop-shadow-[0_2px_6px_rgba(0,0,0,0.5)] pointer-events-none" 
+                          alt="Tech win Brand Logo" 
+                          className="h-[76px] -my-5.5 w-auto object-contain select-none filter drop-shadow-[0_2px_8px_rgba(0,0,0,0.65)] pointer-events-none z-10" 
                           referrerPolicy="no-referrer"
                           draggable={false}
                           onContextMenu={(e) => e.preventDefault()}
@@ -3931,7 +4069,7 @@ export default function App() {
                     </div>
                   </div>
                   {/* Spacer to push content down because of the fixed header */}
-                  <div className="h-[57px] w-full shrink-0" />
+                  <div className="h-[46px] w-full shrink-0" />
 
                   </>
                 )}
@@ -3966,6 +4104,7 @@ export default function App() {
                         <button
                           type="button"
                           onClick={() => {
+                            playWingoSound(clickAudioRef);
                             setActiveWingoRoom(null);
                             setWingoBetOption(null);
                             setWingoWinningsAlert(null);
@@ -3981,8 +4120,8 @@ export default function App() {
                       <div className="flex items-center justify-center">
                         <img 
                           src={gameLogo} 
-                          alt="NEON TRADE Brand Logo" 
-                          className="h-[32px] w-auto object-contain select-none filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)] pointer-events-none"
+                          alt="Tech win Brand Logo" 
+                          className="h-[44px] w-auto object-contain select-none filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)] pointer-events-none"
                           referrerPolicy="no-referrer"
                           draggable={false}
                           onContextMenu={(e) => e.preventDefault()}
@@ -3991,8 +4130,8 @@ export default function App() {
 
                       {/* Right aligned Support/Icons */}
                       <div className="flex items-center justify-end gap-3.5 text-neutral-200">
-                        <Briefcase className="h-5 w-5 hover:text-white transition cursor-pointer" onClick={() => setLobbyToast({ type: 'info', text: selectedLang === 'en' ? 'Rules manual connected.' : 'नियम मैनुअल कनेक्ट हो गया।' })} />
-                        <Headset className="h-5 w-5 hover:text-white transition cursor-pointer" onClick={() => setShowGlobalChat(true)} />
+                        <Briefcase className="h-5 w-5 hover:text-white transition cursor-pointer" onClick={() => { playWingoSound(clickAudioRef); setLobbyToast({ type: 'info', text: selectedLang === 'en' ? 'Rules manual connected.' : 'नियम मैनुअल कनेक्ट हो गया।' }); }} />
+                        <Headset className="h-5 w-5 hover:text-white transition cursor-pointer" onClick={() => { playWingoSound(clickAudioRef); setShowGlobalChat(true); }} />
                       </div>
                     </div>
 
@@ -4010,7 +4149,10 @@ export default function App() {
                           <div className="flex items-center gap-2 mb-0.5">
                             <span className="text-[22px] font-sans font-black tracking-tight text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">₹{balance.toFixed(2)}</span>
                             <button 
-                              onClick={() => handleRefreshBalance()} 
+                              onClick={() => {
+                                playWingoSound(clickAudioRef);
+                                handleRefreshBalance();
+                              }} 
                               className="p-1.5 hover:bg-white/5 rounded-full transition cursor-pointer active:scale-90"
                             >
                               <RefreshCw className={`h-3.5 w-3.5 text-white/50 ${isRefreshing ? 'animate-spin' : ''}`} />
@@ -4029,6 +4171,7 @@ export default function App() {
                         <div className="grid grid-cols-2 gap-3 w-full mt-2">
                           <button 
                             onClick={() => {
+                              playWingoSound(clickAudioRef);
                               setShowWithdrawScreen(true);
                             }}
                             className="py-2.5 rounded-full font-extrabold text-[13px] text-white uppercase tracking-wider text-center cursor-pointer shadow-lg transition transform active:scale-95 border border-white/10 bg-gradient-to-r from-[#d45c5c] to-[#cd4a4a]"
@@ -4036,7 +4179,10 @@ export default function App() {
                             Withdraw
                           </button>
                           <button 
-                            onClick={() => setShowDepositScreen(true)}
+                            onClick={() => {
+                              playWingoSound(clickAudioRef);
+                              setShowDepositScreen(true);
+                            }}
                             className="py-2.5 rounded-full font-extrabold text-[13px] text-white uppercase tracking-wider text-center cursor-pointer shadow-lg transition transform active:scale-95 border border-white/10 bg-gradient-to-r from-[#248c66] to-[#1c7c5d]"
                           >
                             Deposit
@@ -4063,7 +4209,10 @@ export default function App() {
                           </AnimatePresence>
                         </div>
                         <button 
-                          onClick={() => setShowAnnouncements(true)}
+                          onClick={() => {
+                            playWingoSound(clickAudioRef);
+                            setShowAnnouncements(true);
+                          }}
                           className="px-3.5 py-1 rounded-full bg-[#ffbc0d] text-[#4d1213] font-black text-[9.5px] cursor-pointer shadow-sm shrink-0 active:scale-95 transition"
                         >
                           Detail
@@ -4088,6 +4237,7 @@ export default function App() {
                             <button 
                               key={tab.id}
                               onClick={() => {
+                                playWingoSound(clickAudioRef);
                                 setActiveWingoRoom(tab.id);
                                 setWingoBetOption(null);
                                 setWingoWinningsAlert(null);
@@ -4423,7 +4573,10 @@ export default function App() {
                                 <span className="text-white/95 font-medium text-[14px] tracking-wide">Quantity</span>
                                 <div className="flex items-center gap-1.5">
                                   <button 
-                                    onClick={() => setWingoBetQuantity(prev => Math.max(1, (typeof prev === 'number' ? prev : (parseInt(prev as string) || 1)) - 1))}
+                                    onClick={() => {
+                                      playWingoSound(clickAudioRef);
+                                      setWingoBetQuantity(prev => Math.max(1, (typeof prev === 'number' ? prev : (parseInt(prev as string) || 1)) - 1));
+                                    }}
                                     className="w-[28px] h-[28px] bg-[#d54b52] rounded-[3px] flex items-center justify-center text-black/80 text-[20px] font-bold active:scale-95 transition-transform"
                                   >
                                     -
@@ -4449,7 +4602,10 @@ export default function App() {
                                     className="w-[80px] h-[28px] bg-[#1a0506] rounded-[2px] text-center text-white font-medium text-[14px] outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                   />
                                   <button 
-                                    onClick={() => setWingoBetQuantity(prev => (typeof prev === 'number' ? prev : (parseInt(prev as string) || 1)) + 1)}
+                                    onClick={() => {
+                                      playWingoSound(clickAudioRef);
+                                      setWingoBetQuantity(prev => (typeof prev === 'number' ? prev : (parseInt(prev as string) || 1)) + 1);
+                                    }}
                                     className="w-[28px] h-[28px] bg-[#d54b52] rounded-[3px] flex items-center justify-center text-black/80 text-[16px] font-bold active:scale-95 transition-transform"
                                   >
                                     +
@@ -4462,7 +4618,10 @@ export default function App() {
                                 {[1, 5, 10, 20, 50, 100].map(m => (
                                   <button
                                     key={m}
-                                    onClick={() => setWingoMultiplier(m)}
+                                    onClick={() => {
+                                      playWingoSound(clickAudioRef);
+                                      setWingoMultiplier(m);
+                                    }}
                                     className={`px-1 py-0.5 rounded-[3px] text-[11px] font-medium transition-all min-w-[38px] ${
                                       wingoMultiplier === m ? 'bg-[#d54b52] text-white shadow-sm' : 'bg-[#582124] text-white/50'
                                     }`}
@@ -4475,7 +4634,10 @@ export default function App() {
                               {/* Agreement row */}
                               <div className="flex items-center gap-2 pt-1 pb-0">
                                 <button 
-                                  onClick={() => setWingoAgreed(!wingoAgreed)}
+                                  onClick={() => {
+                                    playWingoSound(clickAudioRef);
+                                    setWingoAgreed(!wingoAgreed);
+                                  }}
                                   className={`w-4 h-4 rounded-full flex items-center justify-center transition-all ${wingoAgreed ? 'bg-[#ffbc0d]' : 'border border-white/20'}`}
                                 >
                                   {wingoAgreed && <Check className="w-2.5 h-2.5 text-white stroke-[4]" />}
@@ -4490,7 +4652,10 @@ export default function App() {
                             <div className="flex w-full h-[46px]">
                               {/* Cancel Button */}
                               <button 
-                                onClick={() => setShowWingoBetModal(false)}
+                                onClick={() => {
+                                  playWingoSound(clickAudioRef);
+                                  setShowWingoBetModal(false);
+                                }}
                                 className="w-[35%] bg-[#6a3235] text-white/80 font-normal text-[14px] active:brightness-110 transition-all rounded-none"
                               >
                                 Cancel
@@ -4642,7 +4807,10 @@ export default function App() {
                                   return (
                                     <button
                                       key={val}
-                                      onClick={() => setWingoOuterMultiplier(val)}
+                                      onClick={() => {
+                                        setWingoOuterMultiplier(val);
+                                        playWingoSound(clickAudioRef);
+                                      }}
                                       className={`py-1.5 flex-1 min-w-[30px] px-1 rounded-sm text-[12px] font-bold transition-all duration-150 cursor-pointer text-center border ${
                                         isSelected 
                                           ? 'bg-[#1ca776] text-white border-white/20' 
@@ -4659,7 +4827,10 @@ export default function App() {
                             {/* BIG / SMALL BET SELECTION PANEL */}
                             <div className="w-full flex rounded-r-full rounded-l-full overflow-hidden shadow-lg h-[46px]">
                               <button
-                                onClick={() => handleWingoBetPlace('Big')}
+                                onClick={() => {
+                                  playWingoSound(clickAudioRef);
+                                  handleWingoBetPlace('Big');
+                                }}
                                 className={`flex-1 font-bold text-[18px] tracking-wide cursor-pointer flex items-center justify-center ${
                                   wingoBetOption === 'Big' 
                                     ? 'bg-[#ffbc0d] text-[#4d1213] brightness-105' 
@@ -4669,7 +4840,10 @@ export default function App() {
                                 Big
                               </button>
                               <button
-                                onClick={() => handleWingoBetPlace('Small')}
+                                onClick={() => {
+                                  playWingoSound(clickAudioRef);
+                                  handleWingoBetPlace('Small');
+                                }}
                                 className={`flex-1 font-bold text-[18px] tracking-wide cursor-pointer flex items-center justify-center ${
                                   wingoBetOption === 'Small' 
                                     ? 'bg-[#4285f4] text-white brightness-105' 
@@ -4690,14 +4864,20 @@ export default function App() {
                         <button 
                           className={`py-3 rounded-2xl font-bold text-[13px] shadow-md cursor-pointer transition transform active:scale-95 flex items-center justify-center font-sans ${wingoHistoryTab === 'history' ? 'bg-[#ffbb0d] text-neutral-900' : 'bg-[#341113] text-[#ffccd1]/70 border border-white/5 hover:text-white'}`} 
                           type="button"
-                          onClick={() => setWingoHistoryTab('history')}
+                          onClick={() => {
+                            playWingoSound(clickAudioRef);
+                            setWingoHistoryTab('history');
+                          }}
                         >
                           Game history
                         </button>
                         <button 
                           className={`py-3 rounded-2xl font-bold text-[13px] shadow-md cursor-pointer transition transform active:scale-95 flex items-center justify-center font-sans ${wingoHistoryTab === 'chart' ? 'bg-[#ffbb0d] text-neutral-900' : 'bg-[#341113] text-[#ffccd1]/70 border border-white/5 hover:text-white'}`} 
                           type="button"
-                          onClick={() => setWingoHistoryTab('chart')}
+                          onClick={() => {
+                            playWingoSound(clickAudioRef);
+                            setWingoHistoryTab('chart');
+                          }}
                         >
                           Chart
                         </button>
@@ -4840,9 +5020,15 @@ export default function App() {
                       ) : wingoHistoryTab === 'myhistory' ? (
                         /* My personal bet history view - Enhanced with Screenshot Layout & Maroon Grading */
                         <div className="flex flex-col gap-3 min-h-[400px] mb-4">
-                           {(myWingoBets[activeWingoRoom || '30s'] || []).length > 0 ? (
-                             (myWingoBets[activeWingoRoom || '30s'] || [])
-                               .map((historyItem, idx) => {
+                           {(() => {
+                             const allMyBets = myWingoBets[activeWingoRoom || '30s'] || [];
+                             const totalMyPages = Math.ceil(allMyBets.length / 10) || 1;
+                             const currentMyBets = allMyBets.slice((myHistoryPage - 1) * 10, myHistoryPage * 10);
+                             return (
+                               <>
+                             {currentMyBets.length > 0 ? (
+                             currentMyBets.map((historyItem, idx) => {
+                                 const realIdx = (myHistoryPage - 1) * 10 + idx;
                                  // Determine Icon styling based on choice
                                  let iconBg = "";
                                  let iconText = "text-white";
@@ -4870,11 +5056,11 @@ export default function App() {
                                    iconBg = "bg-[#341113]";
                                  }
 
-                                 const betKey = `${activeWingoRoom || '30s'}_${historyItem.period}_${historyItem.userChoice}_${idx}`;
+                                 const betKey = `${activeWingoRoom || '30s'}_${historyItem.period}_${historyItem.userChoice}_${realIdx}`;
                                  const isExpanded = expandedBetKey === betKey;
 
                                  return (
-                                   <div key={idx} className="flex flex-col mb-1 shadow-xl animate-in fade-in slide-in-from-bottom-2">
+                                   <div key={realIdx} className="flex flex-col mb-1 shadow-xl animate-in fade-in slide-in-from-bottom-2">
                                      <div 
                                          onClick={() => setExpandedBetKey(isExpanded ? null : betKey)}
                                          className={`w-full p-4 flex items-center justify-between cursor-pointer border border-white/[0.04] transition-all active:scale-[0.98] ${isExpanded ? 'rounded-t-2xl' : 'rounded-2xl'}`}
@@ -5004,10 +5190,37 @@ export default function App() {
                                 <div className="text-center">
                                   <p className="text-white font-bold text-sm tracking-tight font-sans">No betting data found</p>
                                   <p className="text-white/40 text-[11px] mt-1 font-sans">Start playing to see your strategy history here</p>
-                                </div>
-                              </div>
-                            )}
-                        </div>
+                                 </div>
+                               </div>
+                             )}
+
+                             {allMyBets.length > 0 && (
+                               <div className="flex items-center justify-center gap-4 py-4 mt-2">
+                                 <button
+                                   className="w-10 h-10 shadow-md rounded-2xl flex items-center justify-center border-white/5 border disabled:opacity-50 transition cursor-pointer"
+                                   style={{ background: 'linear-gradient(180deg, #3d0f10 0%, #2c1012 100%)' }}
+                                   onClick={() => setMyHistoryPage(p => Math.max(1, p - 1))}
+                                   disabled={myHistoryPage === 1}
+                                 >
+                                   <ChevronLeft className="h-5 w-5 text-white/80" />
+                                 </button>
+                                 <span className="font-mono text-white/60 font-medium text-[13px]">
+                                   {myHistoryPage}/{totalMyPages}
+                                 </span>
+                                 <button
+                                   className="w-10 h-10 shadow-md rounded-2xl flex items-center justify-center border-white/5 border disabled:opacity-50 transition cursor-pointer"
+                                   style={{ background: 'linear-gradient(180deg, #3d0f10 0%, #2c1012 100%)' }}
+                                   onClick={() => setMyHistoryPage(p => Math.min(totalMyPages, p + 1))}
+                                   disabled={myHistoryPage === totalMyPages}
+                                 >
+                                   <ChevronRight className="h-5 w-5 text-white/80" />
+                                 </button>
+                               </div>
+                             )}
+                               </>
+                             );
+                           })()}
+                         </div>
                       ) : null}
 
                     </div>
@@ -5506,8 +5719,8 @@ export default function App() {
                                 <span className="absolute -inset-0.5 rounded-xl bg-gradient-to-r from-red-500 to-amber-400 opacity-20 blur animate-pulse" />
                                 <img
                                   src={gameLogo}
-                                  alt="NEON TRADE Logo"
-                                  className="h-10 w-auto object-contain relative z-10 filter drop-shadow-[0_0_6px_rgba(253,210,117,0.35)] pointer-events-none"
+                                  alt="Tech win Logo"
+                                  className="h-12 w-auto object-contain relative z-10 filter drop-shadow-[0_0_6px_rgba(253,210,117,0.35)] pointer-events-none"
                                   referrerPolicy="no-referrer"
                                   draggable={false}
                                   onContextMenu={(e) => e.preventDefault()}
@@ -5530,7 +5743,7 @@ export default function App() {
                             <button
                               type="button"
                               onClick={() => {
-                                setBannerVisible(false);
+                                setCurrentTab('wheel');
                                 setLobbyToast({ type: 'success', text: selectedLang === 'en' ? 'Welcome Bonus Activated!' : 'वेलकम बोनस सक्रिय हो गया!' });
                               }}
                               className="mt-3.5 w-full relative overflow-hidden rounded-xl bg-gradient-to-r from-[#ffd275] to-[#f59e0b] py-2 px-4 text-center font-sans text-[11.5px] font-black uppercase text-black tracking-wider shadow-[0_4px_15px_rgba(251,176,59,0.35)] hover:brightness-110 active:scale-98 transition transform cursor-pointer"
@@ -5547,7 +5760,7 @@ export default function App() {
                     {/* Visual Disclaimer footer inside lobby */}
                     <div className="px-4 mt-6 text-center select-none opacity-40">
                       <p className="text-[8px] text-neutral-500 font-bold leading-relaxed uppercase">
-                        Neon Trade lottery and entertainment systems are built for secure entertainment purposes inside the preview. All outcomes are simulated on device.
+                        Tech win lottery and entertainment systems are built for secure entertainment purposes inside the preview. All outcomes are simulated on device.
                       </p>
                     </div>
 
@@ -5562,6 +5775,8 @@ export default function App() {
                 onClose={() => {}} 
                 inviteeCount={inviteeCount}
                 inviteeDepositCount={inviteeDepositCount}
+                claimedBonuses={claimedInvitationBonuses}
+                onClaim={handleClaimInvitationBonus}
               />
             ) : currentTab === 'wheel' ? (
               <InviteWheelView 
@@ -5765,7 +5980,10 @@ export default function App() {
                 {/* 1. Home Tab Button */}
                 <button
                   id="nav-tab-home"
-                  onClick={() => setCurrentTab('home')}
+                  onClick={() => {
+                    playWingoSound(clickAudioRef);
+                    setCurrentTab('home');
+                  }}
                   className="flex flex-col items-center justify-center cursor-pointer transition-all duration-150 active:scale-95 flex-1"
                 >
                   {currentTab === 'home' ? (
@@ -5799,7 +6017,10 @@ export default function App() {
                 {/* 2. Promo Tab Button with Badged Notification */}
                 <button
                   id="nav-tab-promo"
-                  onClick={() => setCurrentTab('promo')}
+                  onClick={() => {
+                    playWingoSound(clickAudioRef);
+                    setCurrentTab('promo');
+                  }}
                   className="relative flex flex-col items-center justify-center cursor-pointer transition-all duration-150 active:scale-95 flex-1"
                 >
                   {/* Promo Badge removed */}
@@ -5835,7 +6056,10 @@ export default function App() {
                 {/* 3. Center Wheel Tab Button - Absolutely NO spin or movement animations */}
                 <button
                   id="nav-tab-wheel"
-                  onClick={() => setCurrentTab('wheel')}
+                  onClick={() => {
+                    playWingoSound(clickAudioRef);
+                    setCurrentTab('wheel');
+                  }}
                   className="relative flex flex-col items-center justify-start cursor-pointer active:scale-98 w-[76px] shrink-0"
                   style={{ height: '78px' }}
                 >
@@ -5852,7 +6076,10 @@ export default function App() {
                 {/* 4. Earn Tab Button */}
                 <button
                   id="nav-tab-earn"
-                  onClick={() => setCurrentTab('earn')}
+                  onClick={() => {
+                    playWingoSound(clickAudioRef);
+                    setCurrentTab('earn');
+                  }}
                   className="flex flex-col items-center justify-center cursor-pointer transition-all duration-150 active:scale-95 flex-1"
                 >
                   {currentTab === 'earn' ? (
@@ -5886,7 +6113,10 @@ export default function App() {
                 {/* 5. Mine Tab Button with Badged Notification */}
                 <button
                   id="nav-tab-mine"
-                  onClick={() => setCurrentTab('mine')}
+                  onClick={() => {
+                    playWingoSound(clickAudioRef);
+                    setCurrentTab('mine');
+                  }}
                   className="relative flex flex-col items-center justify-center cursor-pointer transition-all duration-150 active:scale-95 flex-1"
                 >
                   {/* Mine Badge removed */}
@@ -6027,6 +6257,63 @@ export default function App() {
             )}
           </AnimatePresence>
 
+          {/* Logout Commitment Confirmation Modal shaped precisely like the screenshots */}
+          <AnimatePresence>
+            {showLogoutConfirm && (
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 bg-black/85 backdrop-blur-sm z-[300] flex items-center justify-center p-6"
+              >
+                <motion.div 
+                  initial={{ scale: 0.92, y: 15 }}
+                  animate={{ scale: 1, y: 0 }}
+                  exit={{ scale: 0.92, y: 15 }}
+                  className="w-full max-w-[320px] rounded-[32px] bg-[#222222] border border-white/5 overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.8)]"
+                >
+                  {/* Header */}
+                  <div className="w-full h-15 bg-[#2b2b2b] flex items-center justify-center border-b border-white/5">
+                    <span className="text-white font-black text-[20px] tracking-wide">
+                      Warning
+                    </span>
+                  </div>
+
+                  <div className="p-8 text-center bg-[#222222]">
+                    <p className="text-white font-semibold text-[16px] leading-relaxed mb-9">
+                      {selectedLang === 'en' 
+                        ? 'Are you sure you want to logout' 
+                        : 'क्या आप वाकई लॉगआउट करना चाहते हैं'}
+                    </p>
+
+                    <div className="flex flex-col gap-3.5">
+                      <button
+                        onClick={() => {
+                          playWingoSound(clickAudioRef);
+                          setShowLogoutConfirm(false);
+                          handleLogout();
+                        }}
+                        className="w-full py-3.5 rounded-full bg-gradient-to-r from-[#ffbc0d] to-[#ffaa22] text-white font-black text-[16px] shadow-lg active:scale-95 transition transform cursor-pointer"
+                      >
+                        Logout
+                      </button>
+                      
+                      <button
+                        onClick={() => {
+                          playWingoSound(clickAudioRef);
+                          setShowLogoutConfirm(false);
+                        }}
+                        className="w-full py-3.5 rounded-full bg-gradient-to-r from-[#d54b52] to-[#b91c1c] text-white font-black text-[16px] shadow-lg active:scale-95 transition transform cursor-pointer border border-white/10"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
         </div>
         </>
       ) : (
@@ -6082,16 +6369,16 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* CENTER BRAND LOGO - NEON TRADE */}
-                <div className="flex flex-col items-center justify-center my-6 select-none">
-                  <img 
-                    src={gameLogo} 
-                    alt="NEON TRADE Logo" 
-                    className="h-16 w-auto object-contain drop-shadow-xl pointer-events-none" 
-                    draggable={false}
-                    onContextMenu={(e) => e.preventDefault()}
-                  />
-                </div>
+                 {/* CENTER BRAND LOGO - Tech win */}
+                 <div className="flex flex-col items-center justify-center my-6 select-none">
+                   <img 
+                     src={gameLogo} 
+                     alt="Tech win Logo" 
+                     className="h-24 w-auto object-contain drop-shadow-xl pointer-events-none" 
+                     draggable={false}
+                     onContextMenu={(e) => e.preventDefault()}
+                   />
+                 </div>
 
                 {/* Enhanced Promotional Dismissible Banner with Close Cross */}
                 <AnimatePresence>
@@ -6121,8 +6408,8 @@ export default function App() {
                           <span className="absolute -inset-0.5 rounded-xl bg-gradient-to-r from-red-500 to-amber-400 opacity-20 blur animate-pulse" />
                           <img
                             src={gameLogo}
-                            alt="NEON TRADE Logo"
-                            className="h-10 w-auto object-contain relative z-10 filter drop-shadow-[0_0_6px_rgba(253,210,117,0.35)] pointer-events-none"
+                            alt="Tech win Logo"
+                            className="h-12 w-auto object-contain relative z-10 filter drop-shadow-[0_0_6px_rgba(253,210,117,0.35)] pointer-events-none"
                             referrerPolicy="no-referrer"
                             draggable={false}
                             onContextMenu={(e) => e.preventDefault()}
@@ -6145,7 +6432,7 @@ export default function App() {
                       <button
                         type="button"
                         onClick={() => {
-                          setBannerVisible(false);
+                          setCurrentTab('wheel');
                           setLobbyToast({ type: 'success', text: selectedLang === 'en' ? 'Welcome Bonus Activated!' : 'वेलकम बोनस सक्रिय हो गया!' });
                         }}
                         className="mt-3.5 w-full relative overflow-hidden rounded-xl bg-gradient-to-r from-[#ffd275] to-[#f59e0b] py-2 px-4 text-center font-sans text-[11.5px] font-black uppercase text-black tracking-wider shadow-[0_4px_15px_rgba(251,176,59,0.35)] hover:brightness-110 active:scale-98 transition transform cursor-pointer"
@@ -6465,13 +6752,13 @@ export default function App() {
         {showBetSuccessful && (
           <motion.div
             key="bet-successful"
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
+            initial={{ opacity: 0, scale: 0.9, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9 }}
-            className="fixed inset-0 z-[500] flex items-center justify-center pointer-events-none px-4"
+            className="fixed inset-0 z-[999] flex items-center justify-center pointer-events-none"
           >
-            <div className="bg-black/90 text-white px-4 py-2 rounded-md text-xs font-bold shadow-2xl border border-white/10 backdrop-blur-md">
-              {selectedLang === 'en' ? 'Bet Successful' : 'बैट सफल'}
+            <div className="bg-black/80 backdrop-blur-[2px] text-white px-4 py-2.5 rounded-lg shadow-2xl text-[13px] font-medium tracking-tight">
+              {selectedLang === 'en' ? 'Bet Successful' : 'सट्टा सफल'}
             </div>
           </motion.div>
         )}
@@ -6492,6 +6779,8 @@ export default function App() {
             uid={uid}
             inviteeCount={inviteeCount}
             inviteeDepositCount={inviteeDepositCount}
+            claimedBonuses={claimedInvitationBonuses}
+            onClaim={handleClaimInvitationBonus}
           />
         )}
       </AnimatePresence>
@@ -6512,6 +6801,9 @@ export default function App() {
           <span>Admin Panel</span>
         </button>
       )}
+
+      {/* Progressive Web App (PWA) Quick Install banner and modal overlay */}
+      <QuickInstall />
     </div>
   );
 }

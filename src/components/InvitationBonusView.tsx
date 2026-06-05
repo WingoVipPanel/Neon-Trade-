@@ -8,6 +8,8 @@ interface InvitationBonusViewProps {
   uid: string;
   inviteeCount: number;
   inviteeDepositCount: number;
+  claimedBonuses: number[];
+  onClaim: (tierId: number, reward: number) => Promise<void>;
 }
 
 const BONUS_TIERS = [
@@ -25,8 +27,17 @@ const BONUS_TIERS = [
   { id: 12, reward: 300000, invitees: 5000, recharge: 1200 },
 ];
 
-export default function InvitationBonusView({ onClose, selectedLang, uid, inviteeCount, inviteeDepositCount }: InvitationBonusViewProps) {
+export default function InvitationBonusView({ 
+  onClose, 
+  selectedLang, 
+  uid, 
+  inviteeCount, 
+  inviteeDepositCount,
+  claimedBonuses,
+  onClaim
+}: InvitationBonusViewProps) {
   const [showRecordView, setShowRecordView] = useState(false);
+  const [isClaiming, setIsClaiming] = useState<number | null>(null);
   // Using dynamic invitation stats from props
   const userInvitees = inviteeCount;
   const userDeposits = inviteeDepositCount;
@@ -158,8 +169,8 @@ export default function InvitationBonusView({ onClose, selectedLang, uid, invite
       {/* Bonus List */}
       <div className="mt-8 px-4 space-y-4">
         {BONUS_TIERS.map((tier) => {
-          const isFinished = userInvitees >= tier.invitees && userDeposits >= tier.invitees; // simplified logic
-          const hasReceivedObj = false; // reset hardcoded received status
+          const isFinished = userInvitees >= tier.invitees && userDeposits >= tier.invitees;
+          const hasReceivedObj = claimedBonuses.includes(tier.id);
 
           return (
             <div key={tier.id} className="w-full bg-[#2a0e0f] rounded-2xl overflow-hidden border border-white/5 shadow-md relative">
@@ -208,17 +219,27 @@ export default function InvitationBonusView({ onClose, selectedLang, uid, invite
               {/* Action Button */}
               <div className="px-4 pb-4">
                 <button 
-                  disabled={!isFinished || hasReceivedObj}
-                  className={`w-full py-3 rounded-xl text-sm font-black shadow-md tracking-widest uppercase
+                  onClick={() => {
+                    setIsClaiming(tier.id);
+                    onClaim(tier.id, tier.reward).finally(() => setIsClaiming(null));
+                  }}
+                  disabled={!isFinished || hasReceivedObj || isClaiming !== null}
+                  className={`w-full py-3 rounded-xl text-sm font-black shadow-md tracking-widest uppercase transition-all active:scale-[0.98]
                     ${hasReceivedObj 
-                      ? 'bg-[#341113] text-white/50 cursor-not-allowed' // Received state
-                      : 'bg-[#4a1618] text-white/30 cursor-not-allowed' // Unfinished state
+                      ? 'bg-[#341113] text-white/50 cursor-not-allowed' 
+                      : isFinished 
+                        ? 'bg-gradient-to-r from-emerald-600 to-emerald-700 text-white shadow-lg shadow-emerald-900/20 animate-pulse'
+                        : 'bg-[#4a1618] text-white/30 cursor-not-allowed'
                     }
                   `}
                 >
-                  {hasReceivedObj 
-                    ? (selectedLang === 'en' ? 'Received' : 'प्राप्त किया')
-                    : (selectedLang === 'en' ? 'Unfinished' : 'अपूर्ण')
+                  {isClaiming === tier.id 
+                    ? '...' 
+                    : hasReceivedObj 
+                      ? (selectedLang === 'en' ? 'Received' : 'प्राप्त किया')
+                      : isFinished
+                        ? (selectedLang === 'en' ? 'Claim Bonus' : 'बोनस प्राप्त करें')
+                        : (selectedLang === 'en' ? 'Unfinished' : 'अपूर्ण')
                   }
                 </button>
               </div>
@@ -234,6 +255,7 @@ export default function InvitationBonusView({ onClose, selectedLang, uid, invite
         {showRecordView && (
           <InvitationRecordView
             selectedLang={selectedLang}
+            uid={uid}
             onClose={() => setShowRecordView(false)}
           />
         )}

@@ -1,6 +1,6 @@
 {
-  "name": "Neon Trade",
-  "description": "High fidelity casino registration & login app with dynamic bonus alerts, interactive spin rewards, custom branding panels, and real-time validation.",
+  "name": "Tech win",
+  "description": "High fidelity casino and Wingo Lottery platform with real-time draw results, dynamic betting systems, interactive spin rewards, and custom branding panels.",
   "requestFramePermissions": ["clipboard-read", "clipboard-write"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

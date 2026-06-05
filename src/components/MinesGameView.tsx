@@ -72,10 +72,18 @@ export default function MinesGameView({
   const handleRefreshBalance = () => {
     if (isRefreshing) return;
     setIsRefreshing(true);
-    setTimeout(() => {
-      setIsRefreshing(false);
-      setBalance((prev) => (prev === 0 ? 500.00 : prev + 150.00));
-    }, 700);
+    
+    // In production, this would re-fetch from Firestore
+    const user = auth.currentUser;
+    if (user) {
+      // Balance is already synced via state in App.tsx, 
+      // but we add a small delay for production feel
+      setTimeout(() => {
+        setIsRefreshing(false);
+      }, 700);
+    } else {
+      setTimeout(() => setIsRefreshing(false), 700);
+    }
   };
 
   const t = {

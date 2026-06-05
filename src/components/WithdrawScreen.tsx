@@ -967,7 +967,7 @@ export default function WithdrawScreen({ onClose, balance, onRefresh, selectedLa
                 {/* UPI Phone */}
                 <div>
                   <label className="text-[10px] font-black text-neutral-400 tracking-wider uppercase mb-1.5 block">
-                    {isEn ? 'Mobile Number (Optional)' : 'मोबाइल नंबर (वैकल्पिक)'}
+                    {isEn ? 'Mobile Number' : 'मोबाइल नंबर'}
                   </label>
                   <div className="bg-[#090d12] rounded-xl border border-white/5 p-3 flex items-center shadow-inner">
                     <input 

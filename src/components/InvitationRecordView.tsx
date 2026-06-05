@@ -1,16 +1,68 @@
 import React from 'react';
 import { motion } from 'framer-motion';
+import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 interface InvitationRecordViewProps {
   onClose: () => void;
   selectedLang: 'en' | 'hi';
+  uid: string;
 }
 
-const MOCK_RECORDS: any[] = [
-  // Records cleared as requested by user
-];
+export default function InvitationRecordView({ onClose, selectedLang, uid }: InvitationRecordViewProps) {
+  const [records, setRecords] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(true);
 
-export default function InvitationRecordView({ onClose, selectedLang }: InvitationRecordViewProps) {
+  React.useEffect(() => {
+    if (!uid) return;
+    
+    // Fetch real referral deposits from Firestore
+    const q = query(
+      collection(db, 'referralDeposits'),
+      where('referrerUid', '==', uid),
+      orderBy('createdAt', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const recordsList: any[] = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        recordsList.push({
+          id: doc.id,
+          name: data.inviteeNickname || 'User',
+          uid: data.inviteeUid || '000000',
+          deposit: data.amount || 0,
+          regTime: data.createdAt ? new Date(data.createdAt.seconds * 1000).toLocaleString() : 'Just now'
+        });
+      });
+      setRecords(recordsList);
+      setLoading(false);
+    }, (err) => {
+      console.error("Error fetching referral records:", err);
+      // Fallback for missing index
+      const qSimple = query(
+        collection(db, 'referralDeposits'),
+        where('referrerUid', '==', uid)
+      );
+      onSnapshot(qSimple, (snapshot) => {
+        const recordsList: any[] = [];
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+          recordsList.push({
+            id: doc.id,
+            name: data.inviteeNickname || 'User',
+            uid: data.inviteeUid || '000000',
+            deposit: data.amount || 0,
+            regTime: data.createdAt ? new Date(data.createdAt.seconds * 1000).toLocaleString() : 'Just now'
+          });
+        });
+        setRecords(recordsList);
+        setLoading(false);
+      });
+    });
+
+    return () => unsubscribe();
+  }, [uid]);
   return (
     <motion.div
       initial={{ opacity: 0, x: '100%' }}
@@ -33,7 +85,18 @@ export default function InvitationRecordView({ onClose, selectedLang }: Invitati
       </div>
 
       <div className="p-4 space-y-3 pb-24">
-        {MOCK_RECORDS.map((record) => (
+        {loading ? (
+          <div className="flex justify-center p-10">
+            <span className="text-white/50 animate-pulse font-bold tracking-widest text-xs uppercase">Loading records...</span>
+          </div>
+        ) : records.length === 0 ? (
+          <div className="flex flex-col items-center justify-center p-10 bg-[#2a0e0f]/50 rounded-2xl border border-white/5">
+             <svg className="w-12 h-12 text-white/10 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+             <span className="text-white/30 text-xs font-bold uppercase tracking-wider text-center leading-relaxed italic">
+               No invitation records found.<br/>Invite friends to start earning!
+             </span>
+          </div>
+        ) : records.map((record) => (
           <div key={record.id} className="bg-[#2a0e0f] rounded-xl p-4 border border-white/5 shadow-sm">
             <div className="flex justify-between items-center mb-3">
               <span className="text-white text-base font-black truncate mr-2">{record.name}</span>

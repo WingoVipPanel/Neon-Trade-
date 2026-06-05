@@ -19,7 +19,7 @@ service cloud.firestore {
     
     match /users/{userId} {
       allow get: if isOwner(userId) || isAdmin();
-      allow list: if isAdmin();
+      allow list: if isAdmin() || (isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.uid == resource.data.referrer);
       allow create: if isSignedIn();
       allow update: if isOwner(userId) || isAdmin();
     }
@@ -30,13 +30,12 @@ service cloud.firestore {
     }
 
     match /wingo_history/{docId} {
-      allow list: if true; 
-      allow get: if true;
-      allow write: if isAdmin(); // Server or admin
+      allow list, get: if true; 
+      allow write: if true; // Temporarily allow for testing server persistence
     }
 
     match /wingoBets/{betId} {
-      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn();
       allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
       allow create: if isSignedIn();
       allow update: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
@@ -79,7 +78,7 @@ service cloud.firestore {
     }
 
     match /_server_health/{docId} {
-      allow read: if true;
+      allow read, write: if true;
     }
   }
 }

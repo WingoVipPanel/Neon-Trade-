@@ -22,14 +22,7 @@ async function initFirebase() {
     const dbId = firebaseConfig.firestoreDatabaseId;
     console.log(`Setting up Firestore. Project: ${admin.app().options.projectId}, Database: ${dbId}`);
     
-    // Pattern that often works best: use the app's firestore method
-    if (dbId && dbId !== '(default)') {
-      console.log(`Using specific database: ${dbId}`);
-      db = getFirestore(dbId);
-    } else {
-      console.log("Using default database");
-      db = getFirestore();
-    }
+    db = getFirestore(admin.app(), dbId || '(default)');
     
     // Verification test with a timeout to avoid blocking boot
     try {
@@ -65,10 +58,10 @@ interface WingoHistoryRecord {
 }
 
 const urlMap: Record<Room, string> = {
-  '30s': 'https://draw.ar-lottery01.com/WinGo/WinGo_30S/GetHistoryIssuePage.json',
-  '1m': 'https://draw.ar-lottery01.com/WinGo/WinGo_1M/GetHistoryIssuePage.json',
-  '3m': 'https://draw.ar-lottery01.com/WinGo/WinGo_3M/GetHistoryIssuePage.json',
-  '5m': 'https://draw.ar-lottery01.com/WinGo/WinGo_5M/GetHistoryIssuePage.json',
+  '30s': 'https://draw.ar-lottery01.com/WinGo/WinGo_30S/GetHistoryIssuePage.json?pageSize=500',
+  '1m': 'https://draw.ar-lottery01.com/WinGo/WinGo_1M/GetHistoryIssuePage.json?pageSize=500',
+  '3m': 'https://draw.ar-lottery01.com/WinGo/WinGo_3M/GetHistoryIssuePage.json?pageSize=500',
+  '5m': 'https://draw.ar-lottery01.com/WinGo/WinGo_5M/GetHistoryIssuePage.json?pageSize=500',
 };
 
 const pollIntervalMap: Record<Room, number> = {
@@ -138,19 +131,22 @@ async function startServer() {
   // Load history from Firestore per room
   if (db) {
     try {
-        console.log("Fetching drawing history from Firestore across all rooms...");
+        console.log("Fetching drawing history from Firestore...");
+        // Fetch all recent records and filter in memory to avoid complex index requirements on boot
         const snap = await db.collection('wingo_history')
             .orderBy('serverTimestamp', 'desc')
-            .limit(1000)
+            .limit(4000)
             .get();
             
         console.log(`Firestore returned ${snap.docs.length} total records.`);
         
+        const allFetched: Record<Room, WingoHistoryRecord[]> = { '30s': [], '1m': [], '3m': [], '5m': [] };
+        
         for (const doc of snap.docs) {
             const data = doc.data();
             const r = data.room as Room;
-            if (ROOMS.includes(r) && roomData[r].history.length < 500) {
-                roomData[r].history.push({
+            if (ROOMS.includes(r) && allFetched[r].length < 500) {
+                allFetched[r].push({
                     period: data.period,
                     number: data.number,
                     color: data.color,
@@ -160,13 +156,15 @@ async function startServer() {
         }
         
         for (const room of ROOMS) {
+            // Firestore data is newest first, so we just set it
+            roomData[room].history = allFetched[room];
             if (roomData[room].history.length > 0) {
                 roomData[room].lastPeriod = roomData[room].history[0].period;
             }
             console.log(`Room [${room}]: Loaded ${roomData[room].history.length} records. Latest period: ${roomData[room].lastPeriod || "None"}`);
         }
     } catch (e) {
-        console.error("Failed to load history from Firestore:", e);
+        console.error("Failed to load history from Firestore during boot:", e);
     }
   }
 
@@ -201,10 +199,9 @@ async function startServer() {
 
   let lastErrorLogTime = 0;
   const saveResult = async (room: Room, record: WingoHistoryRecord) => {
-      // Avoid adding the same period twice if multiple calls hit concurrently
+      // Avoid adding the same period twice
       if (roomData[room].history.some(h => h.period === record.period)) return;
 
-      roomData[room].lastPeriod = record.period;
       roomData[room].history.unshift(record);
       
       // Limit to 500
@@ -212,24 +209,23 @@ async function startServer() {
           roomData[room].history = roomData[room].history.slice(0, 500);
       }
       
-      // Persist to Firestore
+      // Update lastPeriod to the newest in set
+      roomData[room].lastPeriod = roomData[room].history[0].period;
+      
+      // Persist to Firestore (Async - don't block the loop)
       if (db) {
-          try {
-              const docId = `${room}_${record.period}`;
-              await db.collection('wingo_history').doc(docId).set({
-                  ...record,
-                  room,
-                  serverTimestamp: FieldValue.serverTimestamp()
-              });
-              // console.log(`Saved result to Firestore: room=${room}, period=${record.period}`);
-          } catch (e: any) {
+          const docId = `${room}_${record.period}`;
+          db.collection('wingo_history').doc(docId).set({
+              ...record,
+              room,
+              serverTimestamp: FieldValue.serverTimestamp()
+          }).catch((e: any) => {
               const now = Date.now();
-              // Only log the full error every 10 minutes per server instance to avoid spamming "bar bar errors"
               if (now - lastErrorLogTime > 600000) {
                   console.error(`Firestore Persistence Error (room=${room}, period=${record.period}):`, e.message);
                   lastErrorLogTime = now;
               }
-          }
+          });
       }
       broadcastResult(room, record);
   };
@@ -262,8 +258,9 @@ async function startServer() {
           }
         }
 
+        // Process records
         for (const record of newRecords) {
-           await saveResult(room, record);
+           saveResult(room, record);
         }
       }
     } catch (e: any) {

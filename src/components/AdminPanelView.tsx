@@ -1,1462 +1,1489 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   LayoutDashboard, 
-  Settings, 
-  Gamepad2, 
+  Sliders, 
+  Users, 
   Coins, 
+  Wallet, 
+  Gift, 
+  QrCode, 
+  Clock, 
+  Play, 
+  Pause, 
+  RotateCcw, 
+  Check, 
+  X, 
+  Search, 
+  Pencil, 
+  Trash2, 
+  Copy, 
+  AlertTriangle, 
+  ShieldAlert, 
+  Upload, 
+  Info, 
+  Calendar, 
   LogOut, 
   Menu,
-  X,
-  ChevronRight,
-  Activity,
-  MessageSquare,
-  Users,
-  Wallet,
-  Gift,
-  Plus,
-  Trash2,
-  Check,
-  Percent,
-  Search,
-  CheckCircle2,
-  AlertCircle,
-  Clock,
-  User,
-  Sliders,
-  DollarSign
+  Sparkles,
+  Lock,
+  Unlock,
+  TrendingUp,
+  Award
 } from 'lucide-react';
-import { 
-  doc, 
-  updateDoc, 
-  serverTimestamp, 
-  runTransaction, 
-  collection, 
-  query, 
-  where, 
-  getDocs, 
-  onSnapshot, 
-  orderBy, 
-  limit, 
-  setDoc, 
-  getDoc, 
-  deleteDoc 
-} from 'firebase/firestore';
-import { db } from '../lib/firebase';
-import { io } from 'socket.io-client';
+import { motion, AnimatePresence } from 'motion/react';
 
-const socket = io();
+// ==========================================
+// DATA STRUCTURES & SCHEMAS
+// ==========================================
+
+export interface UserAccount {
+  id: string; // USR-102 etc
+  name: string;
+  phone: string;
+  balance: number;
+  joinedDate: string;
+  isBanned: boolean;
+}
+
+export interface DepositWithdrawalTx {
+  id: string;
+  user: string;
+  phone: string;
+  type: 'Deposit' | 'Withdraw';
+  amount: number;
+  upiOrRef: string; // UTR or Bank IFSC
+  time: string;
+  status: 'Pending' | 'Approved' | 'Rejected';
+}
+
+export interface LatestDrawResult {
+  period: string;
+  number: number;
+  color: string; // Red, Green, Violet, Violet+Red etc.
+  size: 'Big' | 'Small';
+  totalBets: number;
+  payout: number;
+}
+
+export interface ClaimCode {
+  code: string;
+  amount: number;
+  used: number;
+  limit: number;
+  expiry: string;
+}
+
+export interface UpiQrConfig {
+  upiId: string;
+  accountName: string;
+  qrDataUrl: string; // Base64 encoded or preset representation
+}
+
+// Default Seed Records
+const SEED_USERS: UserAccount[] = [
+  { id: 'USR-101', name: 'Rahul Chaurasia', phone: '9845720193', balance: 5740, joinedDate: '2026-05-12', isBanned: false },
+  { id: 'USR-102', name: 'Priya Rathore', phone: '8129482910', balance: 14250, joinedDate: '2026-05-18', isBanned: false },
+  { id: 'USR-103', name: 'Amit Kumar Meena', phone: '7014829381', balance: 840, joinedDate: '2026-05-24', isBanned: false },
+  { id: 'USR-104', name: 'Siddharth Patel', phone: '9112938192', balance: 92050, joinedDate: '2026-06-01', isBanned: false },
+  { id: 'USR-105', name: 'Anjali Sharma', phone: '7928391024', balance: 350, joinedDate: '2026-06-03', isBanned: true }
+];
+
+const SEED_TRANSACTIONS: DepositWithdrawalTx[] = [
+  { id: 'TX-802', user: 'Rahul Chaurasia', phone: '9845720193', type: 'Deposit', amount: 2000, upiOrRef: '619283948192', time: '2026-06-04 15:30', status: 'Pending' },
+  { id: 'TX-803', user: 'Priya Rathore', phone: '8129482910', type: 'Withdraw', amount: 5000, upiOrRef: 'SBIN0001048_91283921021', time: '2026-06-04 16:10', status: 'Pending' },
+  { id: 'TX-804', user: 'Amit Kumar Meena', phone: '7014829381', type: 'Deposit', amount: 500, upiOrRef: '938210382912', time: '2026-06-04 16:45', status: 'Approved' },
+  { id: 'TX-805', user: 'Siddharth Patel', phone: '9112938192', type: 'Deposit', amount: 25000, upiOrRef: '320193820192', time: '2026-06-04 17:02', status: 'Approved' },
+  { id: 'TX-806', user: 'Anjali Sharma', phone: '7928391024', type: 'Withdraw', amount: 1500, upiOrRef: 'HDFC0000210_88291028', time: '2026-06-04 17:15', status: 'Rejected' }
+];
+
+const SEED_DRAWS: LatestDrawResult[] = [
+  { period: '202606041124', number: 3, color: 'Red', size: 'Small', totalBets: 4500, payout: 9000 },
+  { period: '202606041123', number: 0, color: 'Violet + Red', size: 'Small', totalBets: 12400, payout: 24800 },
+  { period: '202606041122', number: 8, color: 'Green', size: 'Small', totalBets: 8200, payout: 16400 },
+  { period: '202606041121', number: 5, color: 'Violet + Green', size: 'Big', totalBets: 21500, payout: 32250 },
+  { period: '202606041120', number: 9, color: 'Red', size: 'Big', totalBets: 7600, payout: 15200 },
+  { period: '202606041119', number: 2, color: 'Green', size: 'Small', totalBets: 6100, payout: 12200 },
+  { period: '202606041118', number: 4, color: 'Green', size: 'Big', totalBets: 9400, payout: 18800 },
+  { period: '202606041117', number: 1, color: 'Red', size: 'Big', totalBets: 18400, payout: 36800 },
+  { period: '202606041116', number: 6, color: 'Green', size: 'Big', totalBets: 13200, payout: 26400 },
+  { period: '202606041115', number: 7, color: 'Red', size: 'Small', totalBets: 11000, payout: 22000 }
+];
+
+const SEED_GIFT_CODES: ClaimCode[] = [
+  { code: 'WIN-7392-1084', amount: 200, used: 14, limit: 50, expiry: '2026-08-30' },
+  { code: 'WIN-9952-4410', amount: 500, used: 5, limit: 10, expiry: '2026-07-15' },
+  { code: 'WIN-1203-8842', amount: 100, used: 40, limit: 40, expiry: '2026-06-01' }
+];
+
+// Mapped styling color rules as requested
+// 0 = Violet + Red, 5 = Violet + Green, 1,3,7,9 = Red, 2,4,6,8 = Green
+const getNumberColorText = (num: number): string => {
+  if (num === 0) return 'Violet + Red';
+  if (num === 5) return 'Violet + Green';
+  if ([1, 3, 7, 9].includes(num)) return 'Red';
+  return 'Green';
+};
+
+const getNumberColorGradient = (num: number): string => {
+  if (num === 0) return 'from-purple-600 to-red-600';
+  if (num === 5) return 'from-purple-600 to-green-600';
+  if ([1, 3, 7, 9].includes(num)) return 'from-red-600 to-red-500';
+  return 'from-green-600 to-green-500';
+};
+
+// Size helper: Big (1,4,5,6,9), Small (0,2,3,7,8)
+const getNumberSize = (num: number): 'Big' | 'Small' => {
+  return [1, 4, 5, 6, 9].includes(num) ? 'Big' : 'Small';
+};
 
 interface AdminPanelViewProps {
   onLogout: () => void;
   onToggleView?: () => void;
 }
 
-const ROOMS = ['30s', '1m', '3m', '5m'];
-
-interface DepositRequest {
-  id: string;
-  userId: string;
-  amount: number;
-  bonus: number;
-  totalAmount: number;
-  utr: string;
-  status: string;
-  nickname?: string;
-  avatar?: string;
-  uid?: string;
-  createdAt?: any;
-}
-
-interface WithdrawRequest {
-  id: string;
-  userId: string; // auth uid
-  amount: number;
-  method: string;
-  accountDetails: string;
-  status: string;
-  nickname?: string;
-  avatar?: string;
-  uid?: string;
-  createdAt?: any;
-}
-
-interface UserProfile {
-  id: string; // firebase user uid
-  uid: string; // short numeric uid
-  phoneNumber: string;
-  nickname: string;
-  avatar: string;
-  balance: number;
-  totalDeposits?: number;
-  level?: number;
-  registeredAt?: string;
-}
-
-interface GiftCode {
-  id: string; // code string uppercase
-  amount: number;
-  type: 'standard' | 'deposit_lock';
-  minDeposit: number;
-  createdAt: string;
-}
-
-interface GiftClaim {
-  id: string;
-  giftCode: string;
-  userId: string;
-  userUid: string;
-  amount: number;
-  claimedAt: string;
-}
-
 const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView }) => {
-  const [activeMenu, setActiveMenu] = useState('Dashboard');
-  const [activeWingoRoom, setActiveWingoRoom] = useState('1m');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  
-  // Real-time states
-  const [usersList, setUsersList] = useState<UserProfile[]>([]);
-  const [pendingDeposits, setPendingDeposits] = useState<DepositRequest[]>([]);
-  const [approvedDepositsHistory, setApprovedDepositsHistory] = useState<DepositRequest[]>([]);
-  const [pendingWithdrawals, setPendingWithdrawals] = useState<WithdrawRequest[]>([]);
-  const [withdrawalHistory, setWithdrawalHistory] = useState<WithdrawRequest[]>([]);
-  const [giftCodes, setGiftCodes] = useState<GiftCode[]>([]);
-  const [giftClaims, setGiftClaims] = useState<GiftClaim[]>([]);
-  
-  // manual prediction overrides
-  const [manualPredictions, setManualPredictions] = useState<Record<string, number | null>>({});
-  
-  // Gifts creation state
-  const [gCode, setGCode] = useState('');
-  const [gAmount, setGAmount] = useState('');
-  const [gType, setGType] = useState<'standard' | 'deposit_lock'>('standard');
-  const [gMinDeposit, setGMinDeposit] = useState('');
-  
-  // Users list search & edit states
-  const [userSearchText, setUserSearchText] = useState('');
-  const [editingBalanceUser, setEditingBalanceUser] = useState<string | null>(null);
-  const [balanceChangeAmount, setBalanceChangeAmount] = useState('');
-  const [balanceMode, setBalanceMode] = useState<'add' | 'subtract'>('add');
+  // Navigation Sidebar
+  const [activeTab, setActiveTab] = useState<'wingo' | 'tx' | 'users' | 'gifts' | 'qr' | 'dashboard'>('dashboard');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
-  // custom rejection modal state
-  const [rejectModal, setRejectModal] = useState<{
-    type: 'deposit' | 'withdrawal';
-    request: any;
-  } | null>(null);
-  const [rejectionReason, setRejectionReason] = useState('');
-
-  const [processing, setProcessing] = useState<string | null>(null);
-  const [dashboardStats, setDashboardStats] = useState({
-    totalUsers: 0,
-    totalDepositsAll: 0,
-    totalWithdrawalsAll: 0,
-    activeUsers: 0
+  // Core Persistent State Pools
+  const [users, setUsers] = useState<UserAccount[]>([]);
+  const [transactions, setTransactions] = useState<DepositWithdrawalTx[]>([]);
+  const [draws, setDraws] = useState<LatestDrawResult[]>([]);
+  const [giftCodes, setGiftCodes] = useState<ClaimCode[]>([]);
+  const [upiQr, setUpiQr] = useState<UpiQrConfig>({
+    upiId: 'colorofficial@ybl',
+    accountName: 'WINTRADE TRADING PVT LTD',
+    qrDataUrl: 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=upi://pay?pa=colorofficial@ybl%26pn=WINTRADE%20TRADING%26am=100'
   });
 
-  // Socket prediction listener
+  // Wingo Room Countdown Controller State
+  const [secondsLeft, setSecondsLeft] = useState(180); // Default: 3 min (180s)
+  const [isTimerActive, setIsTimerActive] = useState(true);
+  const [currentPeriod, setCurrentPeriod] = useState('202606041125');
+  const [selectedNextResult, setSelectedNextResult] = useState<number | null>(null);
+
+  // Filters and Search parameters
+  const [txFilter, setTxFilter] = useState<'All' | 'Deposit' | 'Withdraw' | 'Pending'>('All');
+  const [userSearch, setUserSearch] = useState('');
+
+  // UI state overlays handles
+  const [editingUser, setEditingUser] = useState<UserAccount | null>(null);
+  const [editUserName, setEditUserName] = useState('');
+  const [editUserBalance, setEditUserBalance] = useState<number>(0);
+
+  // Gift code generator state
+  const [genAmount, setGenAmount] = useState('100');
+  const [genMaxLimit, setGenMaxLimit] = useState('50');
+  const [genExpiry, setGenExpiry] = useState('2026-12-31');
+  const [latestGeneratedCode, setLatestGeneratedCode] = useState<string | null>(null);
+
+  // UPI configuration edit state
+  const [editUpiId, setEditUpiId] = useState('');
+  const [editUpiName, setEditUpiName] = useState('');
+  const [qrUploadPreview, setQrUploadPreview] = useState<string | null>(null);
+
+  // Notification Toast state
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // -------------------------------------------------------------
+  // INITIALIZATIONS & SERIALIZER LIFECYCLE
+  // -------------------------------------------------------------
   useEffect(() => {
-    socket.on('prediction_updated', ({ room, nextManualResult }) => {
-      setManualPredictions(prev => ({ ...prev, [room]: nextManualResult }));
-    });
-    return () => {
-      socket.off('prediction_updated');
-    };
+    // Check screen size to toggle initial state on mobile devices
+    if (window.innerWidth < 768) {
+      setIsSidebarOpen(false);
+    }
+
+    // Users Serializer
+    const localUsers = localStorage.getItem('wt_admin_users');
+    if (localUsers) {
+      setUsers(JSON.parse(localUsers));
+    } else {
+      setUsers(SEED_USERS);
+      localStorage.setItem('wt_admin_users', JSON.stringify(SEED_USERS));
+    }
+
+    // Transactions Serializer
+    const localTx = localStorage.getItem('wt_admin_transactions');
+    if (localTx) {
+      setTransactions(JSON.parse(localTx));
+    } else {
+      setTransactions(SEED_TRANSACTIONS);
+      localStorage.setItem('wt_admin_transactions', JSON.stringify(SEED_TRANSACTIONS));
+    }
+
+    // Historical Draw Results Serializer
+    const localDraws = localStorage.getItem('wt_admin_draws');
+    if (localDraws) {
+      setDraws(JSON.parse(localDraws));
+    } else {
+      setDraws(SEED_DRAWS);
+      localStorage.setItem('wt_admin_draws', JSON.stringify(SEED_DRAWS));
+    }
+
+    // Gift Voucher Codes Serializer
+    const localGifts = localStorage.getItem('wt_admin_gifts');
+    if (localGifts) {
+      setGiftCodes(JSON.parse(localGifts));
+    } else {
+      setGiftCodes(SEED_GIFT_CODES);
+      localStorage.setItem('wt_admin_gifts', JSON.stringify(SEED_GIFT_CODES));
+    }
+
+    // QR Configuration Serializer
+    const localQr = localStorage.getItem('wt_admin_qr_config');
+    if (localQr) {
+      const q = JSON.parse(localQr);
+      setUpiQr(q);
+      setEditUpiId(q.upiId);
+      setEditUpiName(q.accountName);
+    } else {
+      setEditUpiId(upiQr.upiId);
+      setEditUpiName(upiQr.accountName);
+    }
+
+    // Timer status
+    const savedPeriod = localStorage.getItem('wt_admin_current_period');
+    if (savedPeriod) setCurrentPeriod(savedPeriod);
+
+    const savedSeconds = localStorage.getItem('wt_admin_timer_secs');
+    if (savedSeconds) setSecondsLeft(parseInt(savedSeconds));
   }, []);
 
-  // Set Wingo prediction
-  const handleSetWingoPrediction = (room: string, num: number | null) => {
-    socket.emit('set_prediction', { room, number: num });
-    setManualPredictions(prev => ({ ...prev, [room]: num }));
+  // Sync to database triggers helper
+  const syncLocal = (key: string, data: any) => {
+    localStorage.setItem(key, JSON.stringify(data));
   };
 
-  // Real-time subscriptions
+  const notifyToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  // -------------------------------------------------------------
+  // COUNTDOWN CLOCK TICK LOGIC
+  // -------------------------------------------------------------
   useEffect(() => {
-    // 1. Users live listener
-    const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
-      const uDocs: UserProfile[] = [];
-      snapshot.forEach(doc => {
-        const d = doc.data();
-        uDocs.push({
-          id: doc.id,
-          uid: d.uid || d.userId?.substring(0, 6) || '000000',
-          phoneNumber: d.phoneNumber || '',
-          nickname: d.nickname || 'GuestMember',
-          avatar: d.avatar || d.avatarURL || 'https://api.dicebear.com/7.x/lorelei/svg?seed=Olivia',
-          balance: parseFloat(d.balance || '0'),
-          totalDeposits: parseFloat(d.totalDeposits || '0'),
-          level: d.level || 0,
-          registeredAt: d.registeredAt || d.createdAt || ''
+    let timerInterval: any = null;
+    if (isTimerActive && secondsLeft > 0) {
+      timerInterval = setInterval(() => {
+        setSecondsLeft((prev) => {
+          const nextVal = prev - 1;
+          localStorage.setItem('wt_admin_timer_secs', String(nextVal));
+          return nextVal;
         });
-      });
-      setUsersList(uDocs);
-    });
-
-    // 2. Pending Deposits live listener
-    const qPendingDep = query(collection(db, 'depositRequests'), where('status', '==', 'pending'));
-    const unsubPendingDep = onSnapshot(qPendingDep, (snapshot) => {
-      const dep: DepositRequest[] = [];
-      snapshot.forEach(docSnap => {
-        dep.push({ id: docSnap.id, ...docSnap.data() } as DepositRequest);
-      });
-      setPendingDeposits(dep);
-    });
-
-    // 3. Approved Deposits history live listener
-    const qApprovedDep = query(collection(db, 'depositRequests'), where('status', '==', 'approved'), limit(20));
-    const unsubApprovedDep = onSnapshot(qApprovedDep, (snapshot) => {
-      const dep: DepositRequest[] = [];
-      snapshot.forEach(docSnap => {
-        dep.push({ id: docSnap.id, ...docSnap.data() } as DepositRequest);
-      });
-      setApprovedDepositsHistory(dep);
-    });
-
-    // 4. Pending Withdrawals live listener
-    const qPendingWith = query(collection(db, 'withdrawRequests'), where('status', '==', 'pending'));
-    const unsubPendingWith = onSnapshot(qPendingWith, (snapshot) => {
-      const wit: WithdrawRequest[] = [];
-      snapshot.forEach(docSnap => {
-        wit.push({ id: docSnap.id, ...docSnap.data() } as WithdrawRequest);
-      });
-      setPendingWithdrawals(wit);
-    });
-
-    // 5. Withdrawal history live listener
-    const qHistoryWith = query(collection(db, 'withdrawRequests'), where('status', 'in', ['approved', 'rejected']), limit(25));
-    const unsubHistoryWith = onSnapshot(qHistoryWith, (snapshot) => {
-      const wit: WithdrawRequest[] = [];
-      snapshot.forEach(docSnap => {
-        wit.push({ id: docSnap.id, ...docSnap.data() } as WithdrawRequest);
-      });
-      setWithdrawalHistory(wit);
-    });
-
-    // 6. Gift Codes live listener
-    const unsubGifts = onSnapshot(collection(db, 'giftCodes'), (snapshot) => {
-      const codes: GiftCode[] = [];
-      snapshot.forEach(docSnap => {
-        codes.push({ id: docSnap.id, ...docSnap.data() } as GiftCode);
-      });
-      setGiftCodes(codes);
-    });
-
-    // 7. Gift Claims live listener
-    const unsubClaims = onSnapshot(collection(db, 'giftClaims'), (snapshot) => {
-      const cl: GiftClaim[] = [];
-      snapshot.forEach(docSnap => {
-        cl.push({ id: docSnap.id, ...docSnap.data() } as GiftClaim);
-      });
-      setGiftClaims(cl);
-    });
-
+      }, 1000);
+    } else if (secondsLeft === 0) {
+      // Periodic trigger: settle the Wingo Draw!
+      triggerDrawSettle();
+    }
     return () => {
-      unsubUsers();
-      unsubPendingDep();
-      unsubApprovedDep();
-      unsubPendingWith();
-      unsubHistoryWith();
-      unsubGifts();
-      unsubClaims();
+      if (timerInterval) clearInterval(timerInterval);
     };
-  }, []);
+  }, [secondsLeft, isTimerActive]);
 
-  // Compute dynamic stats over subscribed collections
-  useEffect(() => {
-    const totalDeposits = approvedDepositsHistory.reduce((acc, curr) => acc + (curr.amount || 0), 0);
-    const totalWithdrawals = withdrawalHistory.filter(w => w.status === 'approved').reduce((acc, curr) => acc + (curr.amount || 0), 0);
+  // Settle Round Event Output
+  const triggerDrawSettle = () => {
+    // 1. Resolve selected choice or fallback to pseudo-random distribution
+    const drawNumber = selectedNextResult !== null ? selectedNextResult : Math.floor(Math.random() * 10);
     
-    // Simulate active users count (users with balances > 0 or leveled)
-    const activeCount = usersList.filter(u => u.balance > 10).length;
+    // Standard bets simulated figure calculations
+    const totalBets = Math.floor(5000 + Math.random() * 18000);
+    const payout = Math.floor(totalBets * ([0, 5].includes(drawNumber) ? 1.5 : 2.0));
 
-    setDashboardStats({
-      totalUsers: usersList.length,
-      totalDepositsAll: totalDeposits,
-      totalWithdrawalsAll: totalWithdrawals,
-      activeUsers: activeCount || 1
-    });
-  }, [usersList, approvedDepositsHistory, withdrawalHistory]);
+    const resultRecord: LatestDrawResult = {
+      period: currentPeriod,
+      number: drawNumber,
+      color: getNumberColorText(drawNumber),
+      size: getNumberSize(drawNumber),
+      totalBets: totalBets,
+      payout: payout
+    };
 
-  // Approve Deposit Request
-  const handleApproveDeposit = async (request: DepositRequest) => {
-    setProcessing(request.id);
-    try {
-      await runTransaction(db, async (transaction) => {
-        const depositRef = doc(db, 'depositRequests', request.id);
-        const depSnap = await transaction.get(depositRef);
-        if (!depSnap.exists() || depSnap.data().status !== 'pending') {
-          throw new Error("Request already resolved or missing");
-        }
+    // Prepend resulting record & truncate at 10 items limit
+    const nextDraws = [resultRecord, ...draws].slice(0, 10);
+    setDraws(nextDraws);
+    syncLocal('wt_admin_draws', nextDraws);
 
-        // Try to look up by request.userId (Auth UID) or phone helper
-        let userRef = doc(db, 'users', request.userId);
-        let userSnap = await transaction.get(userRef);
+    // Auto increment period sequence ID
+    const nextPrdVal = String(parseInt(currentPeriod) + 1);
+    setCurrentPeriod(nextPrdVal);
+    localStorage.setItem('wt_admin_current_period', nextPrdVal);
 
-        if (!userSnap.exists()) {
-          // Fallback lookup if userId was phone
-          const usersRef = collection(db, 'users');
-          const phoneQuery = query(usersRef, where('phoneNumber', '==', request.userId));
-          const querySnap = await getDocs(phoneQuery);
-          if (!querySnap.empty) {
-            userRef = doc(db, 'users', querySnap.docs[0].id);
-            userSnap = await transaction.get(userRef);
-          } else {
-            throw new Error(`User profile not found in directory under UID ${request.userId}`);
-          }
-        }
+    // Reset clock back to 3 mins (180s)
+    setSecondsLeft(180);
+    localStorage.setItem('wt_admin_timer_secs', '180');
 
-        const prevBalance = Number(userSnap.data().balance || 0);
-        const prevTotalDeposits = Number(userSnap.data().totalDeposits || 0);
-        
-        // Use totalAmount which holds principal + promo bonus credit automatically
-        const creditAmt = Number(request.totalAmount || request.amount);
-
-        // Update user values
-        transaction.update(userRef, {
-          balance: prevBalance + creditAmt,
-          totalDeposits: prevTotalDeposits + request.amount, // accumulate raw amount for VIP unlocks
-          updatedAt: serverTimestamp()
-        });
-
-        // Set deposit as approved
-        transaction.update(depositRef, {
-          status: 'approved',
-          updatedAt: serverTimestamp()
-        });
-      });
-
-      alert(`Successfully approved ₹${request.totalAmount} recharge!`);
-    } catch (err: any) {
-      console.error(err);
-      alert('Error during approval: ' + err.message);
-    } finally {
-      setProcessing(null);
-    }
+    // Deselect overrides
+    setSelectedNextResult(null);
+    notifyToast(`Period ${currentPeriod} draw settled: Mapped Number ${drawNumber}!`);
   };
 
-  // Reject Deposit Request Trigger (Opens Custom Modal)
-  const handleRejectDeposit = (request: DepositRequest) => {
-    setRejectModal({ type: 'deposit', request });
-    setRejectionReason('UTR mismatch or fake receipt');
+  // Timer controls handles
+  const handleResetTimer = () => {
+    setSecondsLeft(180);
+    localStorage.setItem('wt_admin_timer_secs', '180');
+    notifyToast("Timer has been reset to 3 minutes.");
   };
 
-  // Approve Withdrawal Request
-  const handleApproveWithdrawal = async (request: WithdrawRequest) => {
-    setProcessing(request.id);
-    try {
-      const withRef = doc(db, 'withdrawRequests', request.id);
-      await updateDoc(withRef, {
-        status: 'approved',
-        updatedAt: serverTimestamp()
-      });
-      alert(`Withdrawal request ₹${request.amount} approved!`);
-    } catch (err: any) {
-      alert("Approval error: " + err.message);
-    } finally {
-      setProcessing(null);
-    }
+  const handleToggleTimer = () => {
+    setIsTimerActive(!isTimerActive);
+    notifyToast(isTimerActive ? "Timer counts Paused." : "Timer counts Resumed.");
   };
 
-  // Reject Withdrawal Request Trigger (Opens Custom Modal)
-  const handleRejectWithdrawal = (request: WithdrawRequest) => {
-    setRejectModal({ type: 'withdrawal', request });
-    setRejectionReason('Invalid bank details / UPI ID incorrect');
-  };
-
-  // Process Custom Rejection Submission
-  const handleSubmitRejection = async () => {
-    if (!rejectModal) return;
-    const { type, request } = rejectModal;
-    const finalReason = rejectionReason.trim() || 'Rejected by Admin';
-
-    setProcessing(request.id);
-    setRejectModal(null); // immediately close UI
-
-    try {
-      if (type === 'deposit') {
-        const depositRef = doc(db, 'depositRequests', request.id);
-        await updateDoc(depositRef, {
-          status: 'rejected',
-          rejectionReason: finalReason,
-          updatedAt: serverTimestamp()
-        });
-        alert('Deposit successfully rejected!');
-      } else {
-        await runTransaction(db, async (transaction) => {
-          const withRef = doc(db, 'withdrawRequests', request.id);
-          const wSnap = await transaction.get(withRef);
-          if (!wSnap.exists() || wSnap.data().status !== 'pending') {
-            throw new Error("Withdrawal request already processed.");
-          }
-
-          const userRef = doc(db, 'users', request.userId);
-          const uSnap = await transaction.get(userRef);
-          if (!uSnap.exists()) throw new Error("User document missing");
-
-          const currentBalance = Number(uSnap.data().balance || 0);
-          const refundAmt = Number(request.amount);
-
-          // Refund balance to player
-          transaction.update(userRef, {
-            balance: currentBalance + refundAmt,
-            updatedAt: serverTimestamp()
-          });
-
-          // Set withdrawal request as Rejected
-          transaction.update(withRef, {
-            status: 'rejected',
-            rejectionReason: finalReason,
-            updatedAt: serverTimestamp()
-          });
-        });
-
-        alert(`Withdrawal request of ₹${request.amount} rejected! Balance refunded to player.`);
-      }
-    } catch (err: any) {
-      console.error(err);
-      alert("Error processing rejection: " + err.message);
-    } finally {
-      setProcessing(null);
-    }
-  };
-
-  // Create/Generate Gift Code
-  const handleCreateGiftCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const codeStr = gCode.trim().toUpperCase();
-    const amountVal = parseFloat(gAmount);
-
-    if (!codeStr || codeStr.length < 3) {
-      alert('Please enter a valid gift code (at least 3 characters)');
+  // Lock target number
+  const handleConfirmNextResult = () => {
+    if (selectedNextResult === null) {
+      notifyToast("Please select a number from 0-9 before confirming next result.");
       return;
     }
-    if (isNaN(amountVal) || amountVal <= 0) {
-      alert('Please enter a valid claimable bonus reward amount');
-      return;
-    }
-
-    const minDepLimit = gType === 'deposit_lock' ? parseFloat(gMinDeposit || '0') : 0;
-
-    try {
-      setProcessing('create_gift');
-      const giftRef = doc(db, 'giftCodes', codeStr);
-      await setDoc(giftRef, {
-        amount: amountVal,
-        type: gType,
-        minDeposit: isNaN(minDepLimit) ? 0 : minDepLimit,
-        createdAt: new Date().toISOString()
-      });
-
-      alert(`Success! Generated code: ${codeStr} valued ₹${amountVal.toFixed(2)} (${gType})`);
-      setGCode('');
-      setGAmount('');
-      setGMinDeposit('');
-    } catch (err: any) {
-      alert('Error creating gift: ' + err.message);
-    } finally {
-      setProcessing(null);
-    }
+    notifyToast(`Success: Draw outcome for Period ${currentPeriod} locked on Number ${selectedNextResult}!`);
   };
 
-  // Delete Gift Code
-  const handleDeleteGiftCode = async (codeId: string) => {
-    if (!confirm(`Are you sure you want to permanently delete the gift code "${codeId}"?`)) return;
-    try {
-      await deleteDoc(doc(db, 'giftCodes', codeId));
-      alert('Gift code deleted successfully!');
-    } catch (e: any) {
-      alert('Delete error: ' + e.message);
-    }
-  };
+  // -------------------------------------------------------------
+  // DEPOSITS AND WITHDRAWALS MANAGEMENT
+  // -------------------------------------------------------------
+  const pendingTx = transactions.filter(t => t.status === 'Pending');
+  const approvedTx = transactions.filter(t => t.status === 'Approved');
+  const rejectedTx = transactions.filter(t => t.status === 'Rejected');
 
-  // Adjust User balance
-  const handleUpdateUserBalance = async (userId: string) => {
-    const val = parseFloat(balanceChangeAmount);
-    if (isNaN(val) || val <= 0) {
-      alert('Please input a valid numeric amount to adjust.');
-      return;
-    }
-
-    const signedModifier = balanceMode === 'add' ? val : -val;
-
-    try {
-      setProcessing('adj_' + userId);
-      await runTransaction(db, async (transaction) => {
-        const userRef = doc(db, 'users', userId);
-        const uSnap = await transaction.get(userRef);
-        if (!uSnap.exists()) throw new Error("Player document not found");
-
-        const previousBalance = Number(uSnap.data().balance || 0);
-        const newBalance = Math.max(0, previousBalance + signedModifier);
-
-        transaction.update(userRef, {
-          balance: newBalance,
-          updatedAt: serverTimestamp()
-        });
-      });
-
-      alert(`Balance modified by ₹${signedModifier.toFixed(2)} successfully!`);
-      setEditingBalanceUser(null);
-      setBalanceChangeAmount('');
-    } catch (err: any) {
-      alert("Error: " + err.message);
-    } finally {
-      setProcessing(null);
-    }
-  };
-
-  // Generate automated random safe gift code
-  const handleGenerateRandomCode = () => {
-    const prefix = "GIFT";
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    let rand = "";
-    for (let i = 0; i < 6; i++) {
-      rand += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    setGCode(prefix + rand);
-  };
-
-  // Filter users based on search
-  const filteredUsers = usersList.filter(user => {
-    const term = userSearchText.trim().toLowerCase();
-    if (!term) return true;
-    return (
-      user.nickname.toLowerCase().includes(term) ||
-      user.uid.toLowerCase().includes(term) ||
-      user.phoneNumber.includes(term)
-    );
+  const filteredTx = transactions.filter(t => {
+    if (txFilter === 'Deposit') return t.type === 'Deposit';
+    if (txFilter === 'Withdraw') return t.type === 'Withdraw';
+    if (txFilter === 'Pending') return t.status === 'Pending';
+    return true;
   });
 
-  const menuItems = [
-    { name: 'Dashboard', icon: <LayoutDashboard size={18} /> },
-    { name: 'Users', icon: <Users size={18} /> },
-    { name: 'Deposits', icon: <Wallet size={18} /> },
-    { name: 'Withdrawals', icon: <Coins size={18} /> },
-    { name: 'WinGo Control', icon: <Gamepad2 size={18} /> },
-    { name: 'Gifts Platform', icon: <Gift size={18} /> },
-  ];
+  const handleApproveTx = (txId: string) => {
+    const updated = transactions.map(t => {
+      if (t.id === txId) {
+        // Find owner and credit/validate assets instantly
+        if (t.type === 'Deposit') {
+          // Add deposit amt to user
+          setUsers(curUsers => {
+            const nextList = curUsers.map(u => {
+              if (u.name === t.user || u.phone === t.phone) {
+                return { ...u, balance: u.balance + t.amount };
+              }
+              return u;
+            });
+            syncLocal('wt_admin_users', nextList);
+            return nextList;
+          });
+        }
+        notifyToast(`Success: Approved transaction of ₹${t.amount}`);
+        return { ...t, status: 'Approved' as const };
+      }
+      return t;
+    });
+    setTransactions(updated);
+    syncLocal('wt_admin_transactions', updated);
+  };
+
+  const handleRejectTx = (txId: string) => {
+    const updated = transactions.map(t => {
+      if (t.id === txId) {
+        // If withdrawal is rejected, restore user assets instantly
+        if (t.type === 'Withdraw') {
+          setUsers(curUsers => {
+            const nextList = curUsers.map(u => {
+              if (u.name === t.user || u.phone === t.phone) {
+                return { ...u, balance: u.balance + t.amount };
+              }
+              return u;
+            });
+            syncLocal('wt_admin_users', nextList);
+            return nextList;
+          });
+        }
+        notifyToast(`Success: Rejected transaction of ₹${t.amount}`);
+        return { ...t, status: 'Rejected' as const };
+      }
+      return t;
+    });
+    setTransactions(updated);
+    syncLocal('wt_admin_transactions', updated);
+  };
+
+  // -------------------------------------------------------------
+  // USER DIRECTORY MANAGEMENT
+  // -------------------------------------------------------------
+  const bannedUsersCount = users.filter(u => u.isBanned).length;
+  const cumulativeBalances = users.reduce((acc, curr) => acc + curr.balance, 0);
+
+  const searchedUsers = users.filter(u => 
+    u.name.toLowerCase().includes(userSearch.toLowerCase()) ||
+    u.phone.includes(userSearch) ||
+    u.id.toLowerCase().includes(userSearch.toLowerCase())
+  );
+
+  const toggleBanStatus = (userId: string) => {
+    const updated = users.map(u => {
+      if (u.id === userId) {
+        const nextState = !u.isBanned;
+        notifyToast(`User ${u.name} is now ${nextState ? 'Banned' : 'Unbanned'}`);
+        return { ...u, isBanned: nextState };
+      }
+      return u;
+    });
+    setUsers(updated);
+    syncLocal('wt_admin_users', updated);
+  };
+
+  const handleOpenEditUser = (u: UserAccount) => {
+    setEditingUser(u);
+    setEditUserName(u.name);
+    setEditUserBalance(u.balance);
+  };
+
+  const handleSaveUserEdit = () => {
+    if (!editingUser) return;
+    const updatedUsers = users.map(u => {
+      if (u.id === editingUser.id) {
+        return { ...u, name: editUserName, balance: editUserBalance };
+      }
+      return u;
+    });
+    setUsers(updatedUsers);
+    syncLocal('wt_admin_users', updatedUsers);
+    setEditingUser(null);
+    notifyToast("Player modifications saved successfully.");
+  };
+
+  // -------------------------------------------------------------
+  // GIFT CODE GENERATION CODE
+  // -------------------------------------------------------------
+  const generateRandomGiftVoucher = () => {
+    const parts: string[] = [];
+    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    for (let i = 0; i < 2; i++) {
+      let segment = '';
+      for (let j = 0; j < 4; j++) {
+        segment += characters.charAt(Math.floor(Math.random() * characters.length));
+      }
+      parts.push(segment);
+    }
+    const generated = `WIN-${parts[0]}-${parts[1]}`;
+    
+    const newCode: ClaimCode = {
+      code: generated,
+      amount: parseFloat(genAmount) || 100,
+      used: 0,
+      limit: parseInt(genMaxLimit) || 10,
+      expiry: genExpiry
+    };
+
+    const nextList = [newCode, ...giftCodes];
+    setGiftCodes(nextList);
+    syncLocal('wt_admin_gifts', nextList);
+    setLatestGeneratedCode(generated);
+    notifyToast(`Code ${generated} has been generated successfully.`);
+  };
+
+  const handleDeleteGiftCode = (codeStr: string) => {
+    const nextList = giftCodes.filter(c => c.code !== codeStr);
+    setGiftCodes(nextList);
+    syncLocal('wt_admin_gifts', nextList);
+    notifyToast("Gift Code has been deleted.");
+  };
+
+  const handleCopyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    notifyToast("Voucher copied to clipboard!");
+  };
+
+  // -------------------------------------------------------------
+  // UPI QR INTERACTIVE MANAGER
+  // -------------------------------------------------------------
+  const handleQrImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          setQrUploadPreview(event.target.result as string);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSaveQrConfig = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editUpiId.trim()) {
+      notifyToast("Please input a valid UPI ID Address");
+      return;
+    }
+
+    const updatedConf: UpiQrConfig = {
+      upiId: editUpiId,
+      accountName: editUpiName || 'OFFICIAL WALLET',
+      qrDataUrl: qrUploadPreview || upiQr.qrDataUrl
+    };
+
+    setUpiQr(updatedConf);
+    syncLocal('wt_admin_qr_config', updatedConf);
+    notifyToast("Success: UPI QR & Merchant account updated.");
+  };
 
   return (
-    <div id="admin-main-container" className="min-h-screen bg-[#070709] text-gray-100 font-sans flex flex-col md:flex-row antialiased">
+    <div className="min-h-screen bg-[#0a0a0f] text-slate-100 flex font-sans antialiased overflow-x-hidden">
       
-      {/* Mobile Top Header */}
-      <header className="md:hidden sticky top-0 z-50 bg-[#0d0d11]/90 backdrop-blur-md border-b border-white/5 px-4 py-3.5 flex items-center justify-between">
-        <h1 className="font-extrabold text-[#e53e3e] tracking-widest text-[16px] uppercase">
-          SUPER <span className="text-white font-light">PANEL</span>
-        </h1>
-        <div className="flex items-center gap-2">
-          {onToggleView && (
-            <button 
-              onClick={onToggleView}
-              className="px-3 py-1 bg-emerald-500/20 text-emerald-400 text-xs font-black uppercase tracking-wider rounded border border-emerald-500/30"
-            >
-              Play lobby
-            </button>
-          )}
-          <button 
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)} 
-            className="p-1.5 bg-white/5 text-white/80 rounded border border-white/10 active:scale-95"
+      {/* GLOWING NOTIFICATION TOAST POPUP */}
+      <AnimatePresence>
+        {toastMessage && (
+          <motion.div 
+            initial={{ opacity: 0, y: -20, x: '-50%' }}
+            animate={{ opacity: 1, y: 0, x: '-50%' }}
+            exit={{ opacity: 0, y: -20, x: '-50%' }}
+            className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-[#12121e] border-2 border-[#f0c040] text-[#f0c040] font-dmmono text-xs px-5 py-4 rounded-xl shadow-[0_0_20px_rgba(240,192,64,0.35)] flex items-center gap-3"
           >
-            <Menu size={18} />
-          </button>
-        </div>
-      </header>
+            <Sparkles size={16} className="text-[#f0c040] animate-pulse" />
+            <span>{toastMessage}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* Sidebar navigation */}
-      <aside className={`fixed inset-y-0 left-0 z-40 bg-[#0d0d11] border-r border-white/5 w-64 p-6 flex flex-col transition-transform md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:static`}>
-        
-        {/* Brand */}
-        <div className="mb-8 hidden md:block">
-          <div className="flex items-center gap-2 mb-1">
-            <div className="w-2 h-2 rounded-full bg-red-600 animate-pulse" />
-            <h1 className="font-extrabold text-red-500 text-[18px] tracking-wider uppercase">
-              SUPER <span className="text-white font-normal">CONTROL</span>
-            </h1>
-          </div>
-          <p className="text-[10px] text-zinc-500 tracking-widest uppercase">Admin Terminal v2.1</p>
-        </div>
+      {/* MOBILE BACKDROP OVERLAY */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/60 z-40 md:hidden cursor-pointer"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
 
-        {/* Level badge */}
-        <div className="mb-6 bg-gradient-to-r from-red-950/40 to-zinc-900 border border-red-500/20 p-4 rounded-xl">
-          <p className="text-[12px] font-bold text-red-400 flex items-zinc-center gap-1">
-            <Sliders size={12} className="mt-0.5" /> Core Administrator
-          </p>
-          <p className="text-[10px] text-zinc-500 flex items-center mt-1">Live DB state active</p>
-        </div>
-
-        {/* Navigation Items */}
-        <nav className="space-y-1.5 flex-1">
-          {menuItems.map((item) => (
-            <button
-              id={`nav-${item.name.toLowerCase().replace(' ', '-')}`}
-              key={item.name}
-              onClick={() => { setActiveMenu(item.name); setIsSidebarOpen(false); }}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all ${activeMenu === item.name ? 'bg-gradient-to-r from-red-600 to-red-700 text-white shadow-md shadow-red-900/10' : 'text-zinc-400 hover:bg-white/5 hover:text-white'}`}
-            >
-              <div className="flex items-center gap-3">
-                {item.icon}
-                <span className="font-semibold text-[13px]">{item.name}</span>
+      {/* ADMIN COLLAPSIBLE SIDEBAR NAIL */}
+      <aside className={`fixed inset-y-0 left-0 z-50 bg-[#0e0e18] border-r border-[#f0c040]/10 w-64 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} transition-transform duration-300 flex flex-col justify-between`}>
+        <div>
+          {/* Brand header */}
+          <div className="p-6 border-b border-[#f0c040]/10 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-[#f0c040] to-yellow-600 flex items-center justify-center shadow-lg shadow-yellow-600/25">
+                <Sliders size={16} className="text-black" />
               </div>
-              <ChevronRight size={14} className={`opacity-40 transition-transform ${activeMenu === item.name ? 'rotate-90' : ''}`} />
+              <div>
+                <h2 className="font-syne font-extrabold text-sm tracking-wider uppercase text-[#f0c040]">Wingo Core</h2>
+                <span className="text-[9px] tracking-widest font-dmmono text-slate-500">ADMIN CONTROL</span>
+              </div>
+            </div>
+            <button className="md:hidden text-slate-400 hover:text-white" onClick={() => setIsSidebarOpen(false)}>
+              <X size={18} />
             </button>
-          ))}
-        </nav>
+          </div>
 
-        {/* Bottom Options */}
-        <div className="mt-auto space-y-2 pt-6 border-t border-white/5">
-          {onToggleView && (
-            <button 
-              id="btn-goto-game"
-              onClick={onToggleView}
-              className="w-full flex items-center gap-3 px-4 py-2.5 text-emerald-400 hover:bg-emerald-950/10 border border-emerald-500/10 rounded-xl transition-all text-xs font-bold uppercase tracking-wider justify-center"
-            >
-              <Gamepad2 size={14} />
-              Return to Game
-            </button>
-          )}
+          <div className="p-4">
+            <span className="block text-[10px] uppercase font-bold tracking-widest text-[#f0c040]/40 pl-3 mb-3">Navigation Map</span>
+
+            {/* Nav list representing exactly the 6 sections */}
+            <div className="space-y-1.5">
+              {[
+                { id: 'dashboard', label: 'Overall Dashboard', icon: <LayoutDashboard size={18} /> },
+                { id: 'wingo', label: 'Wingo Control Room', icon: <Clock size={18} /> },
+                { id: 'tx', label: 'Deposit & Withdraw', icon: <Coins size={18} />, count: pendingTx.length },
+                { id: 'users', label: 'User Directory', icon: <Users size={18} /> },
+                { id: 'gifts', label: 'Gift Code Generator', icon: <Gift size={18} /> },
+                { id: 'qr', label: 'UPI QR Settings', icon: <QrCode size={18} /> }
+              ].map((item) => {
+                const isSelected = activeTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      setActiveTab(item.id as any);
+                      if (window.innerWidth < 768) setIsSidebarOpen(false);
+                    }}
+                    className={`w-full py-3.5 px-4 rounded-xl flex items-center justify-between transition-all duration-200 cursor-pointer text-xs font-syne uppercase tracking-wider ${isSelected ? 'bg-gradient-to-r from-[#f0c040]/15 to-transparent text-[#f0c040] border-l-2 border-[#f0c040]' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      {item.icon}
+                      <span>{item.label}</span>
+                    </div>
+                    {item.count && item.count > 0 ? (
+                      <span className="px-2 py-0.5 rounded-full bg-red-600/30 border border-red-500 text-red-400 font-dmmono text-[10px] font-bold">
+                        {item.count}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Sidebar Footer */}
+        <div className="p-6 border-t border-[#f0c040]/10 flex flex-col gap-3">
+          <div className="flex items-center gap-3 pl-1">
+            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
+            <span className="text-[10px] font-bold tracking-widest text-[#f0c040]/60 uppercase font-mono">OPERATIONAL GREEN</span>
+          </div>
 
           <button 
-            id="btn-admin-logout"
             onClick={onLogout}
-            className="w-full flex items-center gap-3 px-4 py-2.5 text-red-400 hover:bg-red-950/20 border border-red-950/10 rounded-xl transition-all text-xs font-bold uppercase tracking-wider justify-center"
+            className="w-full py-3 bg-[#e11d48]/10 hover:bg-[#e11d48]/20 text-[#f43f5e] font-bold text-xs font-syne uppercase tracking-widest rounded-xl transition flex items-center justify-center gap-2 cursor-pointer border border-[#e11d48]/25"
           >
             <LogOut size={14} />
-            Exit Panel
+            Terminal Logout
           </button>
         </div>
       </aside>
 
-      {/* Main Panel Content Column */}
-      <main className="flex-1 p-4 md:p-8 overflow-y-auto w-full max-w-7xl mx-auto space-y-8 pointer-events-auto">
+      {/* MAIN CONTAINER WINDOW WORKSPACE */}
+      <div className="flex-1 min-h-screen flex flex-col md:pl-64 max-w-full overflow-x-hidden min-w-0">
         
-        {/* Active Route Header */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-white/5 pb-5">
-          <div>
-            <h2 className="text-xl md:text-2xl font-black uppercase text-white tracking-wide">{activeMenu}</h2>
-            <p className="text-xs text-zinc-500 mt-1">Reflects live Firestore parameters securely with real transactions.</p>
+        {/* TOP STATUS HEADER BAR */}
+        <header className="sticky top-0 z-30 bg-[#0a0a0f]/90 backdrop-blur-md border-b border-[#f0c040]/10 px-4 py-3 md:px-6 md:py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 md:gap-3">
+            <button className="md:hidden text-[#f0c040] p-1.5 hover:bg-[#12121e] rounded-lg" onClick={() => setIsSidebarOpen(true)}>
+              <Menu size={20} />
+            </button>
+            <h1 className="text-sm md:text-md font-syne font-extrabold uppercase tracking-wide text-slate-100 flex items-center gap-1.5">
+              <span className="text-[#f0c040]">/</span> PANEL CORE
+            </h1>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
-            <span className="text-[11px] font-mono tracking-widest text-[#00ff66] uppercase bg-emerald-500/5 px-2.5 py-1 rounded-full border border-emerald-500/20">
-              SOCKET OK
-            </span>
-          </div>
-        </div>
 
-        {/* 1. DASHBOARD OVERVIEW VIEW */}
-        {activeMenu === 'Dashboard' && (
-          <div className="space-y-8 animate-fadeIn">
-            {/* Bento statistics grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-[#111115] border border-white/5 p-6 rounded-2xl shadow-xl flex flex-col justify-between hover:border-red-500/20 transition duration-300">
-                <div>
-                  <div className="w-10 h-10 bg-zinc-900 border border-white/10 rounded-xl flex items-center justify-center text-zinc-400 mb-4">
-                    <Users size={18} />
-                  </div>
-                  <h3 className="text-[12px] uppercase tracking-widest font-bold text-zinc-400">Total Users</h3>
-                </div>
-                <p className="text-3xl font-black tracking-tight text-white mt-3">{dashboardStats.totalUsers}</p>
-              </div>
-
-              <div className="bg-[#111115] border border-white/5 p-6 rounded-2xl shadow-xl flex flex-col justify-between hover:border-red-500/20 transition duration-300">
-                <div>
-                  <div className="w-10 h-10 bg-zinc-900 border border-white/10 rounded-xl flex items-center justify-center text-emerald-400 mb-4">
-                    <Wallet size={18} />
-                  </div>
-                  <h3 className="text-[12px] uppercase tracking-widest font-bold text-zinc-400">Total Deposits</h3>
-                </div>
-                <p className="text-3xl font-black tracking-tight text-emerald-400 mt-3">₹{dashboardStats.totalDepositsAll.toFixed(2)}</p>
-              </div>
-
-              <div className="bg-[#111115] border border-white/5 p-6 rounded-2xl shadow-xl flex flex-col justify-between hover:border-red-500/20 transition duration-300">
-                <div>
-                  <div className="w-10 h-10 bg-zinc-900 border border-white/10 rounded-xl flex items-center justify-center text-blue-400 mb-4">
-                    <Coins size={18} />
-                  </div>
-                  <h3 className="text-[12px] uppercase tracking-widest font-bold text-zinc-400">Total Withdrawals</h3>
-                </div>
-                <p className="text-3xl font-black tracking-tight text-blue-400 mt-3">₹{dashboardStats.totalWithdrawalsAll.toFixed(2)}</p>
-              </div>
-
-              <div className="bg-[#111115] border border-white/5 p-6 rounded-2xl shadow-xl flex flex-col justify-between hover:border-red-500/20 transition duration-300">
-                <div>
-                  <div className="w-10 h-10 bg-zinc-900 border border-white/10 rounded-xl flex items-center justify-center text-red-500 mb-4">
-                    <Activity size={18} />
-                  </div>
-                  <h3 className="text-[12px] uppercase tracking-widest font-bold text-zinc-400">Active Players</h3>
-                </div>
-                <p className="text-3xl font-black tracking-tight text-red-500 mt-3">{dashboardStats.activeUsers}</p>
-              </div>
-            </div>
-
-            {/* Live activity split section */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              {/* Quick pending warnings */}
-              <div className="bg-[#111115] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
-                <h3 className="font-black text-[13px] uppercase tracking-widest text-[#9e9ea7] flex items-zinc-center gap-2">
-                  <Wallet size={14} /> Pending Deposits Queue ({pendingDeposits.length})
-                </h3>
-                {pendingDeposits.length === 0 ? (
-                  <p className="text-xs text-zinc-500 py-6">All deposits caught up! No pending audits.</p>
-                ) : (
-                  <div className="space-y-3 max-h-[220px] overflow-y-auto pr-1">
-                    {pendingDeposits.map(req => (
-                      <div key={req.id} className="flex justify-between items-center bg-zinc-900/60 p-3.5 rounded-xl border border-white/5 hover:bg-zinc-900 transition">
-                        <div className="flex items-center gap-3">
-                          <img src={req.avatar || "https://api.dicebear.com/7.x/lorelei/svg?seed=Lucky"} className="w-7 h-7 rounded-full bg-white/5 border border-white/10" alt="Av" />
-                          <div className="text-left">
-                            <p className="text-xs font-black text-white">{req.nickname || 'Unknown Player'}</p>
-                            <p className="text-[10px] text-zinc-500 font-mono">UID: {req.uid || req.userId?.substring(0,8)}</p>
-                          </div>
-                        </div>
-                        <span className="text-emerald-400 font-bold text-xs uppercase font-mono">₹{req.totalAmount || req.amount}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Pending Withdrawals Queue */}
-              <div className="bg-[#111115] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
-                <h3 className="font-black text-[13px] uppercase tracking-widest text-[#9e9ea7] flex items-zinc-center gap-2">
-                  <Coins size={14} /> Pending Cashouts Queue ({pendingWithdrawals.length})
-                </h3>
-                {pendingWithdrawals.length === 0 ? (
-                  <p className="text-xs text-zinc-500 py-6">All withdrawals processed! No pending audits.</p>
-                ) : (
-                  <div className="space-y-3 max-h-[220px] overflow-y-auto pr-1">
-                    {pendingWithdrawals.map(req => (
-                      <div key={req.id} className="flex justify-between items-center bg-zinc-900/60 p-3.5 rounded-xl border border-white/5 hover:bg-zinc-900 transition">
-                        <div className="flex items-center gap-3">
-                          <img src={req.avatar || "https://api.dicebear.com/7.x/lorelei/svg?seed=Lucky"} className="w-7 h-7 rounded-full bg-white/5 border border-white/10" alt="Av" />
-                          <div className="text-left">
-                            <p className="text-xs font-black text-white">{req.nickname || 'Unknown Player'}</p>
-                            <p className="text-[10px] text-zinc-500 font-mono">UID: {req.uid || req.userId?.substring(0,8)}</p>
-                          </div>
-                        </div>
-                        <span className="text-red-400 font-bold text-xs uppercase font-mono">₹{req.amount}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+          <div className="flex items-center gap-2 md:gap-4">
+            {onToggleView && (
+              <button 
+                onClick={onToggleView}
+                className="px-3 py-1.5 md:px-4 md:py-2 bg-[#f0c040] hover:bg-yellow-500 text-black font-extrabold rounded-xl text-[10px] md:text-xs uppercase tracking-wider transition-all duration-200 shadow-md active:scale-95 cursor-pointer whitespace-nowrap"
+              >
+                <span className="hidden sm:inline">Back To </span>Game View
+              </button>
+            )}
+            <div className="hidden sm:block bg-[#12121e] border border-[#f0c040]/10 px-3 py-1 md:px-4 md:py-1.5 rounded-xl text-[10px] md:text-[11px] font-dmmono text-amber-500 whitespace-nowrap">
+              UTC: 2026-06-04 20:38
             </div>
           </div>
-        )}
+        </header>
 
-        {/* 2. REGISTERED USERS MANAGEMENT & BALANCE MANAGER */}
-        {activeMenu === 'Users' && (
-          <div className="space-y-6 animate-fadeIn">
-            <div className="bg-[#111115] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                  <h3 className="text-md font-bold uppercase tracking-wider">Registered Player Accounts ({usersList.length})</h3>
-                  <p className="text-xs text-zinc-500">View, search, and customized balances of registered players instantly.</p>
-                </div>
+        {/* WORKSPACE AREA */}
+        <main className="p-4 md:p-8 flex-1 max-w-7xl w-full mx-auto space-y-6 min-w-0">
 
-                <div className="relative w-full md:w-80">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500">
-                    <Search size={14} />
-                  </span>
-                  <input 
-                    type="text" 
-                    placeholder="Search by nickname, phone, UID..."
-                    className="w-full bg-zinc-900 text-xs text-white pl-9 pr-4 py-2.5 rounded-xl border border-white/5 focus:border-red-500/20 focus:outline-none transition font-medium"
-                    value={userSearchText}
-                    onChange={(e) => setUserSearchText(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="overflow-x-auto w-full">
-                <table className="w-full text-left min-w-[700px]">
-                  <thead className="text-[10px] uppercase text-zinc-500 border-b border-white/5 tracking-wider bg-zinc-950/40">
-                    <tr>
-                      <th className="p-4">Profile Icon & Nickname</th>
-                      <th className="p-4">Short UID</th>
-                      <th className="p-4">Phone / Account</th>
-                      <th className="p-4">Total Deposits</th>
-                      <th className="p-4">Current Balance</th>
-                      <th className="p-4 text-right">Balance Adjuster</th>
-                    </tr>
-                  </thead>
-                  <tbody className="text-xs">
-                    {filteredUsers.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="p-8 text-center text-zinc-500">No core player documents match searching.</td>
-                      </tr>
-                    ) : (
-                      filteredUsers.map(u => (
-                        <tr key={u.id} className="border-b border-white/5 hover:bg-white/5 transition">
-                          <td className="p-4 flex items-center gap-3">
-                            <img src={u.avatar} className="w-8 h-8 rounded-full bg-white/5 border border-white/10" alt="Avatar" />
-                            <div className="text-left">
-                              <span className="font-extrabold text-white block text-[13px]">{u.nickname}</span>
-                              <span className="text-[9px] text-[#00ff66] uppercase bg-green-500/5 px-1.5 py-0.5 rounded border border-green-500/10 inline-block mt-0.5">LVL {u.level}</span>
-                            </div>
-                          </td>
-                          <td className="p-4 font-mono font-bold text-zinc-300">{u.uid}</td>
-                          <td className="p-4 font-mono text-zinc-500">{u.phoneNumber || 'firebase-auth'}</td>
-                          <td className="p-4 font-mono text-zinc-400">₹{(u.totalDeposits || 0).toFixed(2)}</td>
-                          <td className="p-4 font-mono font-extrabold text-[#00ff66] text-[13px]">₹{(u.balance || 0).toFixed(2)}</td>
-                          <td className="p-4 text-right">
-                            {editingBalanceUser === u.id ? (
-                              <div className="inline-flex items-center gap-2 bg-zinc-900 border border-white/10 p-1.5 rounded-xl">
-                                <select 
-                                  className="bg-black text-[10px] font-bold text-white px-1.5 py-1 rounded"
-                                  value={balanceMode}
-                                  onChange={(e) => setBalanceMode(e.target.value as 'add' | 'subtract')}
-                                >
-                                  <option value="add">Add (+)</option>
-                                  <option value="subtract">Sub (-)</option>
-                                </select>
-                                <input 
-                                  type="number"
-                                  placeholder="Amount"
-                                  className="w-16 bg-black text-[10px] text-white px-2 py-1 rounded font-mono border border-white/10"
-                                  value={balanceChangeAmount}
-                                  onChange={(e) => setBalanceChangeAmount(e.target.value)}
-                                  autoFocus
-                                />
-                                <button 
-                                  onClick={() => handleUpdateUserBalance(u.id)}
-                                  disabled={processing === 'adj_' + u.id}
-                                  className="p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded cursor-pointer transition active:scale-90"
-                                >
-                                  <Check size={12} />
-                                </button>
-                                <button 
-                                  onClick={() => { setEditingBalanceUser(null); setBalanceChangeAmount(''); }}
-                                  className="p-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded cursor-pointer transition active:scale-90"
-                                >
-                                  <X size={12} />
-                                </button>
-                              </div>
-                            ) : (
-                              <button 
-                                onClick={() => { setEditingBalanceUser(u.id); setBalanceMode('add'); }}
-                                className="inline-flex items-center gap-1.5 bg-red-600/10 hover:bg-red-500 border border-red-500/25 text-red-400 hover:text-white px-3 py-1.5 rounded-xl text-[11px] font-extrabold transition cursor-pointer"
-                              >
-                                <Plus size={12} /> Edit Wallet
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* 3. DEPOSITS AUDIT GATEWAY */}
-        {activeMenu === 'Deposits' && (
-          <div className="space-y-6 animate-fadeIn">
-            {/* Live Pending Deposites list */}
-            <div className="bg-[#111115] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
-              <h3 className="text-md font-bold uppercase tracking-wider text-white">Pending Deposits Audit ({pendingDeposits.length})</h3>
-              <p className="text-xs text-zinc-500">Every recharge features exact dynamic player profiles (ID, name, and profile icon).</p>
+          {/* SECTION 1: OVERALL DASHBOARD */}
+          {activeTab === 'dashboard' && (
+            <div className="space-y-8 animate-fadeIn">
               
-              <div className="overflow-x-auto">
-                <table className="w-full text-left min-w-[650px]">
-                  <thead className="text-[10px] uppercase text-zinc-500 border-b border-white/5 tracking-wider bg-zinc-950/40">
-                    <tr>
-                      <th className="p-4">Profile Icon / Nickname</th>
-                      <th className="p-4">Short UID</th>
-                      <th className="p-4">UTR Number</th>
-                      <th className="p-4">Recharge Value</th>
-                      <th className="p-4 text-right">Audit Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="text-zinc-300 text-xs">
-                    {pendingDeposits.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="p-8 text-center text-zinc-500">No deposits currently awaiting auditing. Perfect workflow!</td>
-                      </tr>
-                    ) : (
-                      pendingDeposits.map(req => (
-                        <tr key={req.id} className="border-b border-white/5 hover:bg-white/5 transition">
-                          <td className="p-4 flex items-center gap-3">
-                            <img src={req.avatar || "https://api.dicebear.com/7.x/lorelei/svg?seed=Lucky"} className="w-8 h-8 rounded-full bg-white/5 border border-white/10" alt="Avatar" />
-                            <div className="text-left">
-                              <span className="font-extrabold text-white block">{req.nickname || 'Unknown Nickname'}</span>
-                              <span className="text-[10px] text-zinc-500 font-mono">{req.userId}</span>
-                            </div>
-                          </td>
-                          <td className="p-4 font-mono font-bold text-zinc-400">{req.uid || 'N/A'}</td>
-                          <td className="p-4 font-mono font-black text-white px-2.5 py-1 bg-zinc-900 border border-white/5 rounded-lg inline-block my-2.5 tracking-wider">{req.utr}</td>
-                          <td className="p-4 text-[#00ff66] font-extrabold text-[13px]">
-                            ₹{req.totalAmount ? Number(req.totalAmount).toFixed(2) : Number(req.amount).toFixed(2)}
-                            {req.bonus > 0 && <span className="text-[9px] text-zinc-500 ml-1 block">(₹{req.amount} + ₹{req.bonus} Bonus)</span>}
-                          </td>
-                          <td className="p-4 text-right space-x-2">
-                            <button 
-                              disabled={processing === req.id}
-                              onClick={() => handleApproveDeposit(req)}
-                              className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-[11px] transition cursor-pointer disabled:opacity-50"
-                            >
-                              {processing === req.id ? 'Processing...' : 'Approve'}
-                            </button>
-                            <button 
-                              disabled={processing === req.id}
-                              onClick={() => handleRejectDeposit(req)}
-                              className="px-3.5 py-1.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-[11px] transition cursor-pointer disabled:opacity-50"
-                            >
-                              Reject
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Approved Deposits History Logger */}
-            <div className="bg-[#111115] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
-              <h3 className="text-[12px] uppercase tracking-widest font-bold text-zinc-400">Recharge Audits History (Recent 20)</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-zinc-400 text-xs">
-                  <thead className="text-[10px] uppercase text-zinc-600 border-b border-white/5 tracking-wider bg-zinc-950/30">
-                    <tr>
-                      <th className="p-4">Profile & Nickname</th>
-                      <th className="p-4">UTR</th>
-                      <th className="p-4">Total Amount Credited</th>
-                      <th className="p-4">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {approvedDepositsHistory.map((h, i) => (
-                      <tr key={h.id || i} className="border-b border-white/5">
-                        <td className="p-4 flex items-center gap-2">
-                          <img src={h.avatar || "https://api.dicebear.com/7.x/lorelei/svg?seed=Micky"} className="w-6 h-6 rounded-full" alt="Av" />
-                          <span>{h.nickname || h.userId}</span>
-                        </td>
-                        <td className="p-4 font-mono text-[11px]">{h.utr}</td>
-                        <td className="p-4 font-mono text-emerald-400">₹{(h.totalAmount || h.amount).toFixed(2)}</td>
-                        <td className="p-4">
-                          <span className="text-[10px] font-extrabold uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full">APPROVED</span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* 4. WITHDRAWALS CASH-OUT AUDIT */}
-        {activeMenu === 'Withdrawals' && (
-          <div className="space-y-6 animate-fadeIn">
-            <div className="bg-[#111115] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
-              <h3 className="text-md font-bold uppercase tracking-wider text-white">Pending Cashouts Requests ({pendingWithdrawals.length})</h3>
-              <p className="text-xs text-zinc-500">Approving claims clears payout ledger. Rejections issue an automatic audit balance refund to players.</p>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-left min-w-[700px]">
-                  <thead className="text-[10px] uppercase text-zinc-500 border-b border-white/5 tracking-wider bg-zinc-950/40">
-                    <tr>
-                      <th className="p-4">Profile / Nickname</th>
-                      <th className="p-4">Short UID</th>
-                      <th className="p-4">Payment Method</th>
-                      <th className="p-4">Account Details (Bank/UPI ID)</th>
-                      <th className="p-4">Withdraw Amount</th>
-                      <th className="p-4 text-right">Audit Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="text-xs">
-                    {pendingWithdrawals.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="p-8 text-center text-zinc-500">No withdrawals currently awaiting audits. Great!</td>
-                      </tr>
-                    ) : (
-                      pendingWithdrawals.map(req => (
-                        <tr key={req.id} className="border-b border-white/5 hover:bg-white/5 transition">
-                          <td className="p-4 flex items-center gap-3">
-                            <img src={req.avatar || "https://api.dicebear.com/7.x/lorelei/svg?seed=Lucky"} className="w-8 h-8 rounded-full bg-white/5 border border-white/10" alt="Avatar" />
-                            <div className="text-left">
-                              <span className="font-extrabold text-white block">{req.nickname || 'Unknown Player'}</span>
-                              <span className="text-[9px] text-zinc-500 font-mono">{req.userId}</span>
-                            </div>
-                          </td>
-                          <td className="p-4 font-mono font-bold text-zinc-400">{req.uid || 'N/A'}</td>
-                          <td className="p-4">
-                            <span className={`px-2 py-1 rounded text-[10px] font-black uppercase ${req.method === 'UPI' ? 'bg-indigo-600/10 text-indigo-400 border border-indigo-500/20' : 'bg-pink-600/10 text-pink-400 border border-pink-500/20'}`}>
-                              {req.method}
-                            </span>
-                          </td>
-                          <td className="p-4 font-mono text-zinc-300 font-bold max-w-xs truncate">{req.accountDetails}</td>
-                          <td className="p-4 text-red-400 font-extrabold text-[13px]">₹{Number(req.amount).toFixed(2)}</td>
-                          <td className="p-4 text-right space-x-2">
-                            <button 
-                              disabled={processing === req.id}
-                              onClick={() => handleApproveWithdrawal(req)}
-                              className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-[11px] transition cursor-pointer disabled:opacity-50"
-                            >
-                              Approve
-                            </button>
-                            <button 
-                              disabled={processing === req.id}
-                              onClick={() => handleRejectWithdrawal(req)}
-                              className="px-3.5 py-1.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-[11px] transition cursor-pointer disabled:opacity-50"
-                            >
-                              Reject & Refund
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Withdrawal records audit history */}
-            <div className="bg-[#111115] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
-              <h3 className="text-[12px] uppercase tracking-widest font-bold text-zinc-400">Cashout History Audits Logs</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full text-zinc-400 text-left text-xs">
-                  <thead className="text-[10px] uppercase text-zinc-600 border-b border-white/5 tracking-wider bg-zinc-950/20">
-                    <tr>
-                      <th className="p-4">Nickname</th>
-                      <th className="p-4">Cashout Value</th>
-                      <th className="p-4">Status Outcome</th>
-                      <th className="p-4">Details/Reason</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {withdrawalHistory.map((h, i) => (
-                      <tr key={h.id || i} className="border-b border-white/5">
-                        <td className="p-4 flex items-center gap-2">
-                          <img src={h.avatar || "https://api.dicebear.com/7.x/lorelei/svg?seed=Olivia"} className="w-6 h-6 rounded-full" alt="Av" />
-                          <span>{h.nickname || 'Member'}</span>
-                        </td>
-                        <td className="p-4 font-mono font-bold text-zinc-300">₹{Number(h.amount).toFixed(2)}</td>
-                        <td className="p-4">
-                          <span className={`text-[10px] font-black tracking-wider uppercase px-2.5 py-0.5 rounded border ${h.status === 'approved' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'}`}>
-                            {h.status}
-                          </span>
-                        </td>
-                        <td className="p-4 text-[11px] text-zinc-500 italic max-w-xs truncate">
-                          {h.status === 'rejected' ? (h as any).rejectionReason || 'No feedback left' : h.accountDetails}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* 5. WinGo PRESETS OVERRIDES */}
-        {activeMenu === 'WinGo Control' && (
-          <div className="space-y-6 animate-fadeIn">
-            <div className="bg-[#111115] border border-white/5 rounded-2xl p-6 shadow-xl space-y-6">
+              {/* Header block */}
               <div>
-                <h3 className="text-md font-bold uppercase tracking-wider text-white">Wingo Result Pre-Settings Prediction override</h3>
-                <p className="text-xs text-zinc-500 mt-1">Preset the exact output number (0-9) to manipulate the next game loop draw instantly.</p>
+                <h2 className="text-xl md:text-2xl font-syne font-extrabold text-[#f0c040] uppercase tracking-wider">Overall Dashboard</h2>
+                <p className="text-xs text-slate-400 mt-1">Global financial metrics, game distribution strategy & user system logs.</p>
               </div>
 
-              {/* Room tabs */}
-              <div className="flex gap-2 border-b border-white/5 pb-4">
-                {ROOMS.map(room => (
-                  <button 
-                    key={room}
-                    onClick={() => setActiveWingoRoom(room)}
-                    className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition ${activeWingoRoom === room ? 'bg-red-600 text-white' : 'bg-zinc-900 text-zinc-400 hover:text-white'}`}
-                  >
-                    WinGo {room}
-                  </button>
+              {/* 4 Golden Stats blocks */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                {[
+                  { label: 'Cumulative Reserves', value: `₹${cumulativeBalances.toLocaleString()}`, icon: <Wallet size={20} className="text-amber-400" />, desc: 'Combined player balance' },
+                  { label: 'Total Verified Recharges', value: `₹${transactions.filter(t => t.type === 'Deposit' && t.status === 'Approved').reduce((a,c) => a+c.amount, 0).toLocaleString()}`, icon: <TrendingUp size={20} className="text-emerald-400" />, desc: 'Deposit ledger cumulative' },
+                  { label: 'Released Cash Cashouts', value: `₹${transactions.filter(t => t.type === 'Withdraw' && t.status === 'Approved').reduce((a,c) => a+c.amount, 0).toLocaleString()}`, icon: <Coins size={20} className="text-rose-400" />, desc: 'Approved withdrawal outlays' },
+                  { label: 'Total Player directory', value: users.length, icon: <Users size={20} className="text-blue-400" />, desc: 'Registered accounts' }
+                ].map((stat, i) => (
+                  <div key={i} className="bg-[#12121e] border border-[#f0c040]/10 rounded-2xl p-6 relative overflow-hidden group hover:border-[#f0c040]/30 transition-all duration-300">
+                    <div className="absolute right-0 bottom-0 translate-x-3 translate-y-3 opacity-5 group-hover:scale-110 transition-transform duration-300">
+                      {stat.icon}
+                    </div>
+                    <div className="flex justify-between items-start mb-4">
+                      <span className="text-[10px] tracking-widest font-syne font-black uppercase text-slate-400">{stat.label}</span>
+                      <div className="p-1.5 rounded-lg bg-white/5 border border-white/10">
+                        {stat.icon}
+                      </div>
+                    </div>
+                    <div className="text-xl md:text-2xl font-dmmono font-black text-[#f0c040] tracking-tight">{stat.value}</div>
+                    <p className="text-[10px] text-slate-500 mt-1">{stat.desc}</p>
+                  </div>
                 ))}
               </div>
 
-              {/* Manipulation Core Console */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-zinc-950/60 p-6 rounded-2xl border border-white/5">
-                <div className="space-y-4">
-                  <h4 className="text-xs uppercase font-extrabold text-zinc-400 tracking-wider">Active Prediction Override:</h4>
+              {/* Advanced interactive analytics visualization chart */}
+              <div className="bg-[#12121e] border border-[#f0c040]/10 rounded-2xl p-6">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6">
+                  <div>
+                    <h3 className="text-sm font-syne font-extrabold text-white uppercase tracking-wider flex items-center gap-2">
+                      <TrendingUp size={16} className="text-[#f0c040]" />
+                      Deposit vs Withdrawal Outflow Chart
+                    </h3>
+                    <p className="text-[11px] text-slate-400">Chronological transaction flow diagram reflecting operational liquidity ratios.</p>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs">
+                    <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> <span className="text-slate-400">Deposits</span></div>
+                    <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-red-500" /> <span className="text-slate-400">Withdrawals</span></div>
+                  </div>
+                </div>
+
+                {/* Highly custom scalable SVG analytics line chart graph to bypass bulky chart imports */}
+                <div className="h-48 w-full bg-[#0a0a0f] rounded-xl flex items-end relative px-4 pb-2 border border-slate-800">
+                  <div className="absolute top-2 left-4 text-[10px] font-dmmono text-slate-600">₹25,000 Volume Maximum</div>
+                  <svg className="w-full h-36" viewBox="0 0 500 150" preserveAspectRatio="none">
+                    <defs>
+                      <linearGradient id="glow-green" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#10b981" stopOpacity="0.3"/>
+                        <stop offset="100%" stopColor="#10b981" stopOpacity="0"/>
+                      </linearGradient>
+                      <linearGradient id="glow-red" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#ef4444" stopOpacity="0.3"/>
+                        <stop offset="100%" stopColor="#ef4444" stopOpacity="0"/>
+                      </linearGradient>
+                    </defs>
+                    
+                    {/* Deposits SVG glowing path */}
+                    <path d="M0,130 Q100,50 200,90 T400,20 T500,60 L500,150 L0,150 Z" fill="url(#glow-green)" />
+                    <path d="M0,130 Q100,50 200,90 T400,20 T500,60" fill="none" stroke="#10b981" strokeWidth="3" />
+
+                    {/* Withdrawals SVG glowing path */}
+                    <path d="M0,120 Q80,110 180,60 T350,110 T500,90 L500,150 L0,150 Z" fill="url(#glow-red)" />
+                    <path d="M0,120 Q80,110 180,60 T350,110 T500,90" fill="none" stroke="#ef4444" strokeWidth="3" />
+                  </svg>
+                  <div className="absolute bottom-2 left-0 right-0 px-4 justify-between flex font-dmmono text-[9px] text-slate-500">
+                    <span>12:00</span>
+                    <span>13:00</span>
+                    <span>14:00</span>
+                    <span>15:00</span>
+                    <span>16:00</span>
+                    <span>17:00</span>
+                    <span>Current</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* SECTION 2: WINGO CONTROL */}
+          {activeTab === 'wingo' && (
+            <div className="space-y-6 animate-fadeIn">
+              
+              {/* Header block */}
+              <div>
+                <h2 className="text-xl md:text-2xl font-syne font-extrabold text-[#f0c040] uppercase tracking-wider text-left">Wingo Control Cabinet</h2>
+                <p className="text-xs text-slate-400 mt-1">Real-time clock trigger cabinet to pause, resume, reset periods or enforce custom outcomes.</p>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                
+                {/* Timer Clock Circle Panel */}
+                <div className="lg:col-span-5 bg-[#12121e] border border-[#f0c040]/10 rounded-2xl p-6 flex flex-col items-center justify-center space-y-6">
+                  <span className="text-[10px] tracking-widest font-syne font-black uppercase text-slate-400">Live Area Timer</span>
                   
-                  <div className="flex items-center gap-4 bg-zinc-900 p-4 rounded-xl border border-white/5">
-                    <div className="space-y-1 text-left">
-                      <p className="text-zinc-500 text-[10px] uppercase font-bold">Room</p>
-                      <p className="text-white font-extrabold text-sm uppercase">WinGo {activeWingoRoom}</p>
-                    </div>
-                    <div className="h-8 w-px bg-white/10" />
-                    <div className="space-y-1 text-left">
-                      <p className="text-zinc-500 text-[10px] uppercase font-bold">Next preset</p>
-                      <p className="font-mono text-lg font-black uppercase tracking-widest">
-                        {manualPredictions[activeWingoRoom] !== null && manualPredictions[activeWingoRoom] !== undefined ? (
-                          <span className="text-[#00ff66]">NUMBER: {manualPredictions[activeWingoRoom]}</span>
-                        ) : (
-                          <span className="text-zinc-500">AUTO / RANDOM</span>
-                        )}
-                      </p>
+                  {/* Circle SVG Progress tracker */}
+                  <div className="relative w-44 h-44 flex items-center justify-center">
+                    <svg className="absolute inset-0 w-full h-full transform -rotate-90">
+                      <circle cx="88" cy="88" r="76" stroke="#1c1c2d" strokeWidth="8" fill="transparent" />
+                      <circle 
+                        cx="88" cy="88" r="76" 
+                        stroke="#f0c040" strokeWidth="8" fill="transparent" 
+                        strokeDasharray={2 * Math.PI * 76} 
+                        strokeDashoffset={2 * Math.PI * 76 * (1 - secondsLeft / 180)}
+                        className="transition-all duration-1000 ease-linear"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                    <div className="text-center z-10">
+                      <span className="block text-[11px] tracking-widest uppercase font-syne font-extrabold text-slate-400">PERIOD {currentPeriod}</span>
+                      <span className="text-4xl font-dmmono font-black text-white inline-block mt-1">
+                        {Math.floor(secondsLeft / 60)}:{(secondsLeft % 60).toString().padStart(2, '0')}
+                      </span>
+                      <span className={`block text-[9px] tracking-widest uppercase font-bold mt-2 ${isTimerActive ? 'text-emerald-500 shadow-sm' : 'text-rose-500 animate-pulse'}`}>
+                        {isTimerActive ? 'COUNTING' : 'PAUSED'}
+                      </span>
                     </div>
                   </div>
 
-                  <div className="flex gap-2">
+                  {/* Operational Timer triggers */}
+                  <div className="flex items-center gap-3 w-full">
                     <button 
-                      onClick={() => handleSetWingoPrediction(activeWingoRoom, null)}
-                      className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold px-4 py-3 rounded-xl text-xs uppercase cursor-pointer transition active:scale-95"
+                      onClick={handleToggleTimer}
+                      className="flex-1 py-3 bg-[#f0c040]/10 hover:bg-[#f0c040]/20 border border-[#f0c040]/30 text-[#f0c040] rounded-xl font-syne text-xs uppercase font-extrabold tracking-widest transition flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                     >
-                      Clear / Reset to Auto
+                      {isTimerActive ? <Pause size={14} /> : <Play size={14} />}
+                      {isTimerActive ? 'Pause' : 'Resume'}
+                    </button>
+                    <button 
+                      onClick={handleResetTimer}
+                      className="py-3 px-4 bg-white/5 hover:bg-white/10 border border-slate-700 text-slate-300 rounded-xl transition flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                      title="Reset Timer to 3m"
+                    >
+                      <RotateCcw size={14} />
+                    </button>
+                    <button 
+                      onClick={triggerDrawSettle}
+                      className="py-3 px-4 bg-emerald-500 hover:bg-emerald-600 text-black rounded-xl font-syne text-xs uppercase font-black tracking-wider transition active:scale-95 cursor-pointer"
+                    >
+                      Force Draw
                     </button>
                   </div>
                 </div>
 
-                <div className="space-y-4">
-                  <h4 className="text-xs uppercase font-extrabold text-zinc-400 tracking-wider">Preset Number Bubble Selector (0 - 9)</h4>
-                  <div className="grid grid-cols-5 gap-2.5">
-                    {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => {
-                      // Determine button color standard matching Wingo colors
-                      let bgGrad = "from-zinc-800 to-zinc-900";
-                      let colorText = "text-white";
-                      if (num === 0) bgGrad = "from-[#9c27b0] via-[#f44336] to-[#9c27b0]"; // Red-Violet
-                      else if (num === 5) bgGrad = "from-[#9c27b0] via-[#4caf50] to-[#9c27b0]"; // Violet-Green
-                      else if (num % 2 === 0) bgGrad = "from-red-600 to-red-800"; // Red
-                      else bgGrad = "from-emerald-600 to-emerald-800"; // Green
-
-                      const isSelected = manualPredictions[activeWingoRoom] === num;
-
-                      return (
-                        <button
-                          key={num}
-                          onClick={() => handleSetWingoPrediction(activeWingoRoom, num)}
-                          className={`w-12 h-12 rounded-full cursor-pointer bg-gradient-to-br ${bgGrad} ${colorText} flex items-center justify-center font-black text-sm relative transition duration-200 shadow-md ${isSelected ? 'ring-4 ring-white scale-110 shadow-lg shadow-white/10 border-2 border-zinc-950' : 'opacity-80 hover:opacity-100 hover:scale-105 active:scale-95'}`}
-                        >
-                          {num}
-                          {isSelected && (
-                            <div className="absolute -top-1 -right-1 w-4 h-4 bg-white text-zinc-950 rounded-full flex items-center justify-center text-[8px] font-black">
-                              ✓
-                            </div>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* 6. TWO TYPES OF GIFT CODE GENERATOR & CLAIM TRACKING */}
-        {activeMenu === 'Gifts Platform' && (
-          <div className="space-y-6 animate-fadeIn">
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
-              
-              {/* Left Column: Creator of codes */}
-              <div className="bg-[#111115] border border-white/5 rounded-2xl p-6 shadow-xl lg:col-span-2 space-y-6">
-                <div>
-                  <h3 className="text-md font-bold uppercase tracking-wider text-white">Generate Code</h3>
-                  <p className="text-xs text-zinc-500 mt-1">Deploy automated claimable voucher rewards to player system.</p>
-                </div>
-
-                <form onSubmit={handleCreateGiftCode} className="space-y-5">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wide block">Code String</label>
-                    <div className="flex gap-2">
-                      <input 
-                        type="text"
-                        placeholder="e.g. WELCOME100"
-                        className="flex-1 bg-zinc-900 border border-white/5 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-red-500/20 font-mono font-bold uppercase"
-                        value={gCode}
-                        onChange={(e) => setGCode(e.target.value)}
-                        required
-                      />
-                      <button 
-                        type="button"
-                        onClick={handleGenerateRandomCode}
-                        className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold px-3 rounded-xl text-xs/tight cursor-pointer focus:outline-none"
-                      >
-                        Auto-Gen
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wide block">Bonus Amount (₹ Payout)</label>
-                    <input 
-                      type="number"
-                      placeholder="e.g. 50"
-                      className="w-full bg-zinc-900 border border-white/5 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-red-500/20 font-bold"
-                      value={gAmount}
-                      onChange={(e) => setGAmount(e.target.value)}
-                      required
-                      min={1}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wide block">Voucher Type Selector</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button 
-                        type="button"
-                        onClick={() => setGType('standard')}
-                        className={`py-3 rounded-xl border text-xs font-bold transition cursor-pointer flex flex-col items-center justify-center gap-1 ${gType === 'standard' ? 'bg-red-600/10 text-red-500 border-red-500/30' : 'bg-zinc-950 border-white/5 text-zinc-400 hover:text-white'}`}
-                      >
-                        <Gift size={14} />
-                        <span>Standard</span>
-                      </button>
-                      <button 
-                        type="button"
-                        onClick={() => setGType('deposit_lock')}
-                        className={`py-3 rounded-xl border text-xs font-bold transition cursor-pointer flex flex-col items-center justify-center gap-1 ${gType === 'deposit_lock' ? 'bg-[#ff9f0a]/10 text-[#ff9f0a] border-[#ff9f0a]/30' : 'bg-zinc-950 border-white/5 text-zinc-400 hover:text-white'}`}
-                      >
-                        <Wallet size={14} />
-                        <span>Deposit-Lock</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {gType === 'deposit_lock' && (
-                    <div className="space-y-2 bg-[#ff9f0a]/5 p-4 rounded-xl border border-[#ff9f0a]/20 animate-slide">
-                      <label className="text-[10px] font-bold text-[#ff9f0a] uppercase tracking-wide block">Accumulated Deposit Requirement (₹)</label>
-                      <input 
-                        type="number"
-                        placeholder="e.g. 500"
-                        className="w-full bg-zinc-900 border border-[#ff9f0a]/10 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-[#ff9f0a]/40 font-bold"
-                        value={gMinDeposit}
-                        onChange={(e) => setGMinDeposit(e.target.value)}
-                        required={gType === 'deposit_lock'}
-                        min={1}
-                      />
-                      <p className="text-[10px] text-zinc-500 mt-1">This voucher claims ONLY if user's cumulative registered deposit exceeds this setting.</p>
-                    </div>
-                  )}
-
-                  <button 
-                    type="submit"
-                    disabled={processing === 'create_gift'}
-                    className="w-full py-3.5 bg-gradient-to-r from-red-600 to-red-700 text-white font-extrabold rounded-xl text-xs uppercase tracking-wider cursor-pointer shadow-md hover:brightness-110 active:scale-98 transition duration-200 disabled:opacity-50"
-                  >
-                    {processing === 'create_gift' ? 'Generating...' : 'Create Voucher Code'}
-                  </button>
-                </form>
-              </div>
-
-              {/* Right Column: Active codes & Claims history list */}
-              <div className="lg:col-span-3 space-y-6">
-                
-                {/* Active Gift list */}
-                <div className="bg-[#111115] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
-                  <h3 className="font-extrabold text-xs uppercase tracking-widest text-zinc-400">Deployed Codes ({giftCodes.length})</h3>
-                  <div className="max-h-[300px] overflow-y-auto pr-1 space-y-3">
-                    {giftCodes.length === 0 ? (
-                      <p className="text-xs text-zinc-500 py-6 text-center">No gift codes created yet.</p>
-                    ) : (
-                      giftCodes.map((codeObj, i) => (
-                        <div key={codeObj.id || i} className="flex justify-between items-center bg-zinc-900/60 p-4 rounded-xl border border-white/5">
-                          <div className="text-left space-y-1">
-                            <span className="font-mono text-zinc-100 font-extrabold text-sm">{codeObj.id}</span>
-                            <div className="flex items-center gap-2">
-                              <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded border ${codeObj.type === 'deposit_lock' ? 'bg-amber-500/15 text-amber-400 border-amber-500/20' : 'bg-zinc-850 text-zinc-400 border-white/5'}`}>
-                                {codeObj.type === 'deposit_lock' ? `DEPOSIT ≥ ₹${codeObj.minDeposit}` : 'STANDARD'}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-4">
-                            <span className="text-emerald-400 font-extrabold font-mono text-sm">₹{Number(codeObj.amount).toFixed(2)}</span>
-                            <button 
-                              onClick={() => handleDeleteGiftCode(codeObj.id)}
-                              className="p-2 border border-red-500/10 text-red-400 hover:bg-red-500 hover:text-white rounded-lg transition active:scale-90"
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                {/* Claim tracker logger list */}
-                <div className="bg-[#111115] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
-                  <h3 className="font-extrabold text-xs uppercase tracking-widest text-zinc-400">Claims Log Feed ({giftClaims.length})</h3>
-                  <div className="max-h-[320px] overflow-y-auto pr-1 space-y-3">
-                    {giftClaims.length === 0 ? (
-                      <p className="text-xs text-zinc-500 py-6 text-center">No voucher claims yet.</p>
-                    ) : (
-                      giftClaims.map((claim, idx) => {
-                        // Find claiming user if subscribed
-                        const userObj = usersList.find(u => u.id === claim.userId);
-                        return (
-                          <div key={claim.id || idx} className="flex justify-between items-center bg-zinc-950/60 p-3.5 rounded-xl border border-white/5">
-                            <div className="flex items-center gap-3">
-                              <img src={userObj?.avatar || "https://api.dicebear.com/7.x/lorelei/svg?seed=Lucky"} className="w-8 h-8 rounded-full bg-white/5" alt="Av" />
-                              <div className="text-left">
-                                <p className="text-xs font-black text-white">{userObj?.nickname || 'Unknown Avatar'}</p>
-                                <p className="text-[10px] text-zinc-500 font-mono">UID: {claim.userUid || 'N/A'}</p>
-                              </div>
-                            </div>
-                            
-                            <div className="text-right space-y-0.5">
-                              <p className="text-zinc-200 font-extrabold text-xs">VOUCHER: <span className="font-mono">{claim.giftCode}</span></p>
-                              <p className="text-emerald-400 font-bold text-xs">+₹{Number(claim.amount).toFixed(2)}</p>
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
-
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Custom Rejection Dialog Modal */}
-        {rejectModal && (
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-fade-in">
-            <div className="bg-[#18181b] border border-white/10 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl relative text-left">
-              <div className="p-5 border-b border-white/5 flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-bold text-red-500 flex items-center gap-2">
-                    <span className="text-lg">⚠️</span> Reject {rejectModal.type === 'deposit' ? 'Deposit' : 'Withdrawal'}
-                  </h3>
-                  <p className="text-[11px] text-zinc-400 mt-0.5">Please specify why you are rejecting this request</p>
-                </div>
-                <button 
-                  type="button"
-                  onClick={() => setRejectModal(null)}
-                  className="p-1 hover:bg-white/5 rounded-lg text-zinc-400 hover:text-white transition cursor-pointer"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-
-              <div className="p-5 space-y-4">
-                <div className="bg-zinc-950/45 p-3 rounded-xl border border-white/5 text-[11.5px] space-y-1.5 font-medium text-zinc-300">
-                  <div className="flex justify-between">
-                    <span className="text-zinc-500 font-sans">Player Phone/UID:</span>
-                    <span className="font-mono text-white font-bold">{rejectModal.request.phone || rejectModal.request.uid || 'N/A'}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-zinc-500 font-sans">Requested Amount:</span>
-                    <span className="text-[#00ff66] font-black">₹{Number(rejectModal.request.amount || 0).toFixed(2)}</span>
-                  </div>
-                  {rejectModal.type === 'deposit' ? (
-                    <div className="flex justify-between">
-                      <span className="text-zinc-500 font-sans">UTR / Reference:</span>
-                      <span className="font-mono text-yellow-500 font-bold">{rejectModal.request.utr}</span>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col gap-0.5 text-left">
-                      <span className="text-zinc-500 font-sans">Account Details:</span>
-                      <span className="font-mono text-white break-all bg-black/30 p-1.5 rounded border border-white/5 mt-1 block text-[10px] leading-relaxed">
-                        {rejectModal.request.accountDetails || 'N/A'}
+                {/* NEXT RESULT CHOICE LOCK PANEL */}
+                <div className="lg:col-span-7 bg-[#12121e] border border-[#f0c040]/10 rounded-2xl p-6 flex flex-col justify-between">
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between border-b border-[#f0c040]/10 pb-4">
+                      <div>
+                        <h4 className="text-sm font-syne font-extrabold text-white uppercase tracking-wider">Set Next Period Result</h4>
+                        <p className="text-[10px] text-slate-400">Manipulate draw criteria manually or default to zero payout profit mode.</p>
+                      </div>
+                      <span className="px-3 py-1 font-dmmono text-[11px] font-bold bg-[#f0c040]/10 text-[#f0c040] border border-[#f0c040]/20 rounded-full">
+                        Lock Result
                       </span>
                     </div>
-                  )}
-                </div>
 
-                <div className="space-y-2 text-left">
-                  <label className="text-[11px] uppercase tracking-wider font-bold text-[#ff9c5a] block font-sans">Quick Presets:</label>
-                  <div className="grid grid-cols-2 gap-2 text-[10.5px]">
-                    {rejectModal.type === 'deposit' ? (
-                      <>
-                        <button 
-                          onClick={() => setRejectionReason('UTR mismatch or fake receipt')}
-                          type="button"
-                          className="p-2 text-left bg-zinc-900 hover:bg-zinc-800 border border-white/5 rounded-lg text-zinc-300 hover:text-white transition truncate cursor-pointer active:scale-95"
-                        >
-                          UTR mismatch / Fake receipt
-                        </button>
-                        <button 
-                          onClick={() => setRejectionReason('Incorrect amount transferred')}
-                          type="button"
-                          className="p-2 text-left bg-zinc-900 hover:bg-zinc-800 border border-white/5 rounded-lg text-zinc-300 hover:text-white transition truncate cursor-pointer active:scale-95"
-                        >
-                          Incorrect amount sent
-                        </button>
-                        <button 
-                          onClick={() => setRejectionReason('No money received in bank')}
-                          type="button"
-                          className="p-2 text-left bg-zinc-900 hover:bg-zinc-800 border border-white/5 rounded-lg text-zinc-300 hover:text-white transition truncate cursor-pointer active:scale-95"
-                        >
-                          No bank credit received
-                        </button>
-                        <button 
-                          onClick={() => setRejectionReason('Please contact VIP Support')}
-                          type="button"
-                          className="p-2 text-left bg-zinc-900 hover:bg-zinc-800 border border-white/5 rounded-lg text-zinc-300 hover:text-white transition truncate cursor-pointer active:scale-95"
-                        >
-                          Contact VIP Support
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button 
-                          onClick={() => setRejectionReason('Incorrect UPI ID or Account No')}
-                          type="button"
-                          className="p-2 text-left bg-zinc-900 hover:bg-zinc-800 border border-white/5 rounded-lg text-zinc-300 hover:text-white transition truncate cursor-pointer active:scale-95"
-                        >
-                          Details incorrect / Invalid UPI
-                        </button>
-                        <button 
-                          onClick={() => setRejectionReason('Multiple accounts detected')}
-                          type="button"
-                          className="p-2 text-left bg-zinc-900 hover:bg-zinc-800 border border-white/5 rounded-lg text-zinc-300 hover:text-white transition truncate cursor-pointer active:scale-95"
-                        >
-                          Multiple accounts detected
-                        </button>
-                        <button 
-                          onClick={() => setRejectionReason('Wager criteria not met')}
-                          type="button"
-                          className="p-2 text-left bg-zinc-900 hover:bg-zinc-800 border border-white/5 rounded-lg text-zinc-300 hover:text-white transition truncate cursor-pointer active:scale-95"
-                        >
-                          Wager criteria not met
-                        </button>
-                        <button 
-                          onClick={() => setRejectionReason('Under minimum withdrawal rules')}
-                          type="button"
-                          className="p-2 text-left bg-zinc-900 hover:bg-zinc-800 border border-white/5 rounded-lg text-zinc-300 hover:text-white transition truncate cursor-pointer active:scale-95"
-                        >
-                          Min withdrawal error
-                        </button>
-                      </>
-                    )}
+                    {/* Numeric Selector Grid */}
+                    <div>
+                      <span className="block text-[10px] tracking-widest font-syne font-black uppercase text-slate-400 mb-3 text-left">Choose Winner Block Number (0 - 9)</span>
+                      <div className="grid grid-cols-5 gap-2.5">
+                        {Array.from({ length: 10 }).map((_, num) => {
+                          const isSelected = selectedNextResult === num;
+                          return (
+                            <button
+                              key={num}
+                              onClick={() => setSelectedNextResult(isSelected ? null : num)}
+                              className={`py-3 rounded-xl font-dmmono font-black text-sm relative transition-all duration-200 cursor-pointer active:scale-90 border-2 ${isSelected ? 'border-[#f0c040] shadow-[0_0_15px_rgba(240,192,64,0.3)]' : 'border-slate-800'} bg-gradient-to-tr ${getNumberColorGradient(num)} text-white`}
+                            >
+                              <span className="text-lg block">{num}</span>
+                              <span className="text-[8px] uppercase block opacity-80 mt-0.5">{getNumberSize(num)}</span>
+                              {isSelected && (
+                                <div className="absolute top-1 right-1 w-2.5 h-2.5 bg-yellow-400 rounded-full flex items-center justify-center p-0.5">
+                                  <Check size={8} className="text-black font-black" />
+                                </div>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* MAPPED FORMULA TRUTH RULES */}
+                    <div className="bg-[#0a0a0f] p-4 rounded-xl border border-[#f0c040]/5 space-y-1">
+                      <div className="flex items-center gap-1.5 text-[10px] text-zinc-500 border-b border-white/5 pb-1 mb-2 font-syne font-bold uppercase tracking-wider">
+                        <Info size={12} className="text-[#f0c040]" />
+                        <span>Game Logic Rules Matrix</span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 font-dmmono text-[11px] text-slate-400">
+                        <div className="flex justify-between"><span>Number 0:</span> <span className="text-purple-400 font-bold">Violet + Red (Small)</span></div>
+                        <div className="flex justify-between"><span>Number 5:</span> <span className="text-teal-400 font-bold">Violet + Green (Big)</span></div>
+                        <div className="flex justify-between"><span>Odds [1,3,7,9]:</span> <span className="text-red-400 font-bold">Red</span></div>
+                        <div className="flex justify-between"><span>Evens [2,4,6,8]:</span> <span className="text-green-400 font-bold">Green</span></div>
+                        <div className="flex justify-between"><span>Big Size:</span> <span className="text-[#f0c040]">1, 4, 5, 6, 9</span></div>
+                        <div className="flex justify-between"><span>Small Size:</span> <span className="text-blue-400">0, 2, 3, 7, 8</span></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 pt-4 border-t border-[#f0c040]/10 flex flex-col sm:flex-row gap-3">
+                    <button
+                      onClick={handleConfirmNextResult}
+                      disabled={selectedNextResult === null}
+                      className={`flex-1 py-3 text-center font-syne text-xs uppercase font-extrabold tracking-widest rounded-xl transition cursor-pointer active:scale-98 ${selectedNextResult !== null ? 'bg-gradient-to-r from-[#f0c040] to-yellow-500 text-black font-black shadow-lg shadow-yellow-600/25' : 'bg-white/5 text-slate-500 border border-slate-800'}`}
+                    >
+                      Confirm Next Result {selectedNextResult !== null ? `(Enforce: ${selectedNextResult})` : ''}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION: PREPENDED LAST 10 DRAWN RESULTS RESULTS */}
+              <div className="bg-[#12121e] border border-[#f0c040]/10 rounded-2xl p-6">
+                <div className="flex justify-between items-center mb-4">
+                  <div>
+                    <h4 className="text-sm font-syne font-extrabold text-white uppercase tracking-wider">Historial Draw Results Ledger (Last 10 Rounds)</h4>
+                    <p className="text-[11px] text-slate-400">Verification archive showing historical payout logs and total aggregated bets.</p>
                   </div>
                 </div>
 
-                <div className="space-y-1.5 text-left font-sans">
-                  <label className="text-[11px] uppercase tracking-wider font-bold text-zinc-400 block">Or write a custom rejection reason:</label>
-                  <textarea 
-                    value={rejectionReason}
-                    onChange={(e) => setRejectionReason(e.target.value)}
-                    placeholder="Enter reason details..."
-                    rows={3}
-                    className="w-full bg-zinc-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-red-500 transition font-sans"
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left">
+                    <thead>
+                      <tr className="border-b border-slate-800 text-[10px] uppercase font-syne text-slate-400 font-black tracking-widest bg-[#0a0a0f]/50">
+                        <th className="p-3">Period Sequence ID</th>
+                        <th className="p-3">Winner Number</th>
+                        <th className="p-3">Winner Color Mapped</th>
+                        <th className="p-3">Winner Size</th>
+                        <th className="p-3">Simulated Bets Value</th>
+                        <th className="p-3 text-right">Aggregated Payout</th>
+                      </tr>
+                    </thead>
+                    <tbody className="font-dmmono text-slate-300">
+                      {draws.map((dr, index) => (
+                        <tr key={dr.period} className={`border-b border-slate-800/50 hover:bg-white/5 transition ${index === 0 ? 'bg-gradient-to-r from-[#f0c040]/5 to-transparent' : ''}`}>
+                          <td className="p-3 font-bold text-amber-500">{dr.period}</td>
+                          <td className="p-3">
+                            <span className={`inline-block w-7 h-7 rounded-full text-center leading-7 font-black text-white bg-gradient-to-tr ${getNumberColorGradient(dr.number)}`}>
+                              {dr.number}
+                            </span>
+                          </td>
+                          <td className="p-3 font-semibold">{dr.color}</td>
+                          <td className="p-3">
+                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${dr.size === 'Big' ? 'bg-[#f0c040]/10 text-[#f0c040] border border-[#f0c040]/20' : 'bg-slate-800 text-slate-400'}`}>
+                              {dr.size}
+                            </span>
+                          </td>
+                          <td className="p-3 text-slate-400">₹{dr.totalBets.toLocaleString()}</td>
+                          <td className="p-3 text-right text-[#f0c040] font-bold">₹{dr.payout.toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* SECTION 3: DEPOSIT & WITHDRAWAL GATEWAY QUEUES */}
+          {activeTab === 'tx' && (
+            <div className="space-y-6 animate-fadeIn">
+              
+              {/* Header block */}
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                <div>
+                  <h2 className="text-xl md:text-2xl font-syne font-extrabold text-[#f0c040] uppercase tracking-wider">Deposit & Withdrawal Queue Desk</h2>
+                  <p className="text-xs text-slate-400 mt-1">Pending payments approval controller ledger with fast status updates updates.</p>
+                </div>
+                
+                {/* 4 Multi-state tabs filters */}
+                <div className="flex bg-[#12121e] border border-slate-800 p-1 rounded-xl">
+                  {['All', 'Deposit', 'Withdraw', 'Pending'].map((opt) => (
+                    <button
+                      key={opt}
+                      onClick={() => setTxFilter(opt as any)}
+                      className={`px-3 py-1.5 text-[10px] font-syne font-black uppercase tracking-wider rounded-lg transition-all duration-200 cursor-pointer ${txFilter === opt ? 'bg-[#f0c040] text-black' : 'text-slate-400 hover:text-white'}`}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Top 3 Counter indicators */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+                {[
+                  { label: 'Pending Authorizations', val: pendingTx.length, bg: 'border-yellow-500/10 bg-yellow-500/5', txt: 'text-yellow-400' },
+                  { label: 'Settled Approvals', val: approvedTx.length, bg: 'border-emerald-500/10 bg-emerald-500/5', txt: 'text-emerald-400' },
+                  { label: 'Rejected Exceptions', val: rejectedTx.length, bg: 'border-rose-500/10 bg-rose-500/5', txt: 'text-rose-400' }
+                ].map((st, idx) => (
+                  <div key={idx} className={`border ${st.bg} rounded-2xl p-5 flex items-center justify-between`}>
+                    <div>
+                      <span className="block text-[9px] tracking-widest font-syne font-black uppercase text-slate-400">{st.label}</span>
+                      <span className={`text-2xl font-dmmono font-black mt-2 inline-block ${st.txt}`}>{st.val} Records</span>
+                    </div>
+                    <div className={`p-2 rounded-xl bg-white/5`}>
+                      <Coins size={16} className={st.txt} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Transactions Ledger Database Tabular format */}
+              <div className="bg-[#12121e] border border-[#f0c040]/10 rounded-2xl p-6">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left">
+                    <thead>
+                      <tr className="border-b border-slate-800 text-[10px] uppercase font-syne text-slate-400 font-extrabold tracking-widest bg-[#0a0a0f]/50">
+                        <th className="p-3">User Details</th>
+                        <th className="p-3">Payment Model</th>
+                        <th className="p-3">Transaction Figures</th>
+                        <th className="p-3">UPI UPI ID / Ref UTR ID</th>
+                        <th className="p-3">Request Creation Time</th>
+                        <th className="p-3">Settle State</th>
+                        <th className="p-3 text-right">Control Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="font-dmmono text-slate-300">
+                      {filteredTx.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="p-8 text-center text-slate-500">No payment records filtered with current parameters.</td>
+                        </tr>
+                      ) : (
+                        filteredTx.map(tx => (
+                          <tr key={tx.id} className="border-b border-slate-800/50 hover:bg-white/5 transition-all">
+                            <td className="p-3">
+                              <span className="font-sans font-bold text-white block">{tx.user}</span>
+                              <span className="text-[10px] text-slate-400 block">{tx.phone}</span>
+                            </td>
+                            <td className="p-3 font-semibold">
+                              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${tx.type === 'Deposit' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'}`}>
+                                {tx.type}
+                              </span>
+                            </td>
+                            <td className="p-3 font-black text-slate-100 text-sm">
+                              ₹{tx.amount.toLocaleString()}
+                            </td>
+                            <td className="p-3 text-[#f0c040] select-all font-bold tracking-wider">{tx.upiOrRef}</td>
+                            <td className="p-3 text-slate-400">{tx.time}</td>
+                            <td className="p-3">
+                              <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${tx.status === 'Approved' ? 'bg-emerald-500/10 text-emerald-400' : tx.status === 'Rejected' ? 'bg-rose-500/10 text-rose-400' : 'bg-yellow-500/10 text-yellow-400 animate-pulse'}`}>
+                                {tx.status}
+                              </span>
+                            </td>
+                            <td className="p-3 text-right">
+                              {tx.status === 'Pending' ? (
+                                <div className="flex gap-2 justify-end">
+                                  <button
+                                    onClick={() => handleApproveTx(tx.id)}
+                                    className="p-1 px-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 rounded-lg text-[10px] uppercase font-bold tracking-wider flex items-center gap-1 cursor-pointer transition active:scale-95"
+                                  >
+                                    <Check size={11} /> Approve
+                                  </button>
+                                  <button
+                                    onClick={() => handleRejectTx(tx.id)}
+                                    className="p-1 px-2.5 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 rounded-lg text-[10px] uppercase font-bold tracking-wider flex items-center gap-1 cursor-pointer transition active:scale-95"
+                                  >
+                                    <X size={11} /> Reject
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="text-[10px] uppercase tracking-widest text-[#f0c040]/40 font-bold">SETTLED TRANSACTION</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* SECTION 4: USER DIRECTORY LIST */}
+          {activeTab === 'users' && (
+            <div className="space-y-6 animate-fadeIn">
+              
+              {/* Header block */}
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                <div>
+                  <h2 className="text-xl md:text-2xl font-syne font-extrabold text-[#f0c040] uppercase tracking-wider">User Management Directory</h2>
+                  <p className="text-xs text-slate-400 mt-1">Audit active profiles, modify custom player wallet assets or issue bans.</p>
+                </div>
+                
+                {/* Search Bar Input */}
+                <div className="relative w-full sm:w-72">
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none text-slate-500">
+                    <Search size={15} />
+                  </span>
+                  <input
+                    type="text"
+                    placeholder="Search name, phone, or ID..."
+                    value={userSearch}
+                    onChange={(e) => setUserSearch(e.target.value)}
+                    className="w-full bg-[#12121e] border border-[#f0c040]/25 rounded-xl pl-10 pr-4 py-2 text-xs focus:ring-1 focus:ring-[#f0c040] text-slate-100 outline-none placeholder:text-slate-500"
                   />
                 </div>
               </div>
 
-              <div className="p-4 bg-zinc-950/40 border-t border-white/5 flex gap-3">
-                <button 
-                  onClick={() => setRejectModal(null)}
-                  type="button"
-                  className="flex-1 py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 font-bold text-xs rounded-xl border border-white/5 transition cursor-pointer active:scale-95 text-center"
+              {/* 3 User Stats counter blocks */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+                {[
+                  { label: 'Total Registered Players', val: users.length, icon: <Users size={16} className="text-amber-500" /> },
+                  { label: 'Aggregated Live Balances Potential', val: `₹${cumulativeBalances.toLocaleString()}`, icon: <Wallet size={16} className="text-emerald-500" /> },
+                  { label: 'Banned Accounts Restricted', val: bannedUsersCount, icon: <ShieldAlert size={16} className="text-rose-500" /> }
+                ].map((usStat, index) => (
+                  <div key={index} className="bg-[#12121e] border border-[#f0c040]/10 rounded-2xl p-5 flex items-center justify-between">
+                    <div>
+                      <span className="block text-[9px] tracking-widest font-syne font-black uppercase text-slate-400">{usStat.label}</span>
+                      <span className="text-2xl font-dmmono font-black mt-1.5 inline-block text-[#f0c040]">{usStat.val}</span>
+                    </div>
+                    <div className="p-2 bg-white/5 border border-white/10 rounded-xl">
+                      {usStat.icon}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Directory Listing Table */}
+              <div className="bg-[#12121e] border border-[#f0c040]/10 rounded-2xl p-6">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left">
+                    <thead>
+                      <tr className="border-b border-slate-800 text-[10px] uppercase font-syne text-slate-400 font-extrabold tracking-widest bg-[#0a0a0f]/50">
+                        <th className="p-3">Player ID</th>
+                        <th className="p-3">Display Name</th>
+                        <th className="p-3">Phone Line</th>
+                        <th className="p-3">Wallet Balance</th>
+                        <th className="p-3">Date Joined</th>
+                        <th className="p-3">Account Security</th>
+                        <th className="p-3 text-right">Controller Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="font-dmmono text-slate-300">
+                      {searchedUsers.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="p-8 text-center text-slate-500">No profile matches found under typed parameters.</td>
+                        </tr>
+                      ) : (
+                        searchedUsers.map(u => (
+                          <tr key={u.id} className={`border-b border-slate-800/50 hover:bg-white/5 transition-all ${u.isBanned ? 'bg-red-950/10' : ''}`}>
+                            <td className="p-3 font-semibold text-amber-500">{u.id}</td>
+                            <td className="p-3 font-sans font-bold text-white text-sm">{u.name}</td>
+                            <td className="p-3 text-slate-400">{u.phone}</td>
+                            <td className="p-3 font-bold text-slate-100">₹{u.balance.toLocaleString()}</td>
+                            <td className="p-3 text-slate-400 text-[10px]">{u.joinedDate}</td>
+                            <td className="p-3">
+                              <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${u.isBanned ? 'bg-rose-500/10 text-rose-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
+                                {u.isBanned ? 'Banned' : 'Active'}
+                              </span>
+                            </td>
+                            <td className="p-3 text-right">
+                              <div className="flex gap-2 justify-end">
+                                <button
+                                  onClick={() => handleOpenEditUser(u)}
+                                  className="p-1 px-2 bg-white/5 hover:bg-white/10 text-[#f0c040] rounded border border-[#f0c040]/25 text-[10px] uppercase font-bold tracking-widest cursor-pointer transition active:scale-95 flex items-center gap-1"
+                                >
+                                  <Pencil size={11} /> Modify
+                                </button>
+                                <button
+                                  onClick={() => toggleBanStatus(u.id)}
+                                  className={`p-1 px-2 rounded text-[10px] uppercase font-bold tracking-widest cursor-pointer transition active:scale-95 flex items-center gap-1 ${u.isBanned ? 'bg-emerald-500/10 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/25' : 'bg-rose-500/10 hover:bg-rose-500/25 text-rose-400 border border-rose-500/25'}`}
+                                >
+                                  {u.isBanned ? <Unlock size={11} /> : <Lock size={11} />}
+                                  {u.isBanned ? 'Unlock' : 'Ban'}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* SECTION 5: GIFT CODE GENERATE */}
+          {activeTab === 'gifts' && (
+            <div className="space-y-6 animate-fadeIn">
+              
+              {/* Header block */}
+              <div>
+                <h2 className="text-xl md:text-2xl font-syne font-extrabold text-[#f0c040] uppercase tracking-wider">Gift Code Generation Cabinet</h2>
+                <p className="text-xs text-slate-400 mt-1">Formulate exclusive credit-multiplier claim codes for event marketing vouchers.</p>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                
+                {/* Generation form panel */}
+                <div className="lg:col-span-5 bg-[#12121e] border border-[#f0c040]/10 rounded-2xl p-6">
+                  <h3 className="text-sm font-syne font-extrabold text-white uppercase tracking-wider mb-4 border-b border-slate-800 pb-3 flex items-center gap-2">
+                    <Award size={16} className="text-[#f0c040]" />
+                    Voucher Parameters
+                  </h3>
+
+                  <div className="space-y-4 font-syne">
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Rupee Amount (₹ Value)</label>
+                      <input
+                        type="number"
+                        value={genAmount}
+                        onChange={(e) => setGenAmount(e.target.value)}
+                        className="w-full bg-[#0a0a0f] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 outline-none font-dmmono focus:border-[#f0c040]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Allowed Claim Limit</label>
+                      <input
+                        type="number"
+                        value={genMaxLimit}
+                        onChange={(e) => setGenMaxLimit(e.target.value)}
+                        className="w-full bg-[#0a0a0f] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 outline-none font-dmmono focus:border-[#f0c040]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Voucher Expiration Date</label>
+                      <input
+                        type="date"
+                        value={genExpiry}
+                        onChange={(e) => setGenExpiry(e.target.value)}
+                        className="w-full bg-[#0a0a0f] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 outline-none font-dmmono focus:border-[#f0c040]"
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={generateRandomGiftVoucher}
+                      className="w-full py-3.5 bg-gradient-to-r from-[#f0c040] to-yellow-600 text-black font-black text-xs uppercase tracking-widest rounded-xl transition shadow-lg shadow-yellow-600/20 active:scale-95 cursor-pointer"
+                    >
+                      Generate Reward Voucher
+                    </button>
+                  </div>
+                </div>
+
+                {/* Display newly generated code block panel */}
+                <div className="lg:col-span-7 bg-[#12121e] border border-[#f0c040]/10 rounded-2xl p-6 flex flex-col justify-between">
+                  <div>
+                    <h3 className="text-sm font-syne font-extrabold text-white uppercase tracking-wider mb-3">Live Voucher Code Output</h3>
+                    <p className="text-[11px] text-slate-400 mb-4 leading-relaxed">Ensure generated claim keys are copied correctly. Distribute code string securely to active player circles.</p>
+                    
+                    {latestGeneratedCode ? (
+                      <div className="bg-[#0a0a0f] border-2 border-dashed border-[#f0c040]/40 p-8 rounded-2xl text-center space-y-4">
+                        <span className="block text-[9px] tracking-widest text-slate-500 uppercase font-black">WINNING BONUS ID</span>
+                        <div className="font-dmmono text-2xl font-black text-[#f0c040] tracking-wider tracking-widest">{latestGeneratedCode}</div>
+                        
+                        <div className="flex items-center justify-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => handleCopyToClipboard(latestGeneratedCode)}
+                            className="py-2 px-5 bg-[#f0c040] text-black font-bold font-syne text-[10px] uppercase tracking-wider rounded-lg flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition"
+                          >
+                            <Copy size={12} /> Copy Code
+                          </button>
+                          <span className="text-[10px] block text-green-400 font-bold flex items-center gap-1"><Check size={12}/> Vested Voucher Live</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-[#0a0a0f] border border-slate-800 p-8 rounded-2xl text-center text-slate-500 text-xs py-14">
+                        No code generated yet this session. Modify parameters on the left and hit generate button.
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-4 pt-4 border-t border-[#f0c040]/10 text-xs text-slate-500 flex items-center gap-2">
+                    <Info size={14} className="text-[#f0c040]" />
+                    <span>Generated promotional keys instantly credited to client reserves upon user checkout.</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Code database overview directory table */}
+              <div className="bg-[#12121e] border border-[#f0c040]/10 rounded-2xl p-6">
+                <h4 className="text-xs font-syne font-extrabold uppercase text-slate-300 tracking-wider mb-4">Active System codes ledger</h4>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left">
+                    <thead>
+                      <tr className="border-b border-slate-800 text-[10px] uppercase font-syne text-slate-400 font-extrabold tracking-widest bg-[#0a0a0f]/50">
+                        <th className="p-3">Promotion Code Key</th>
+                        <th className="p-3">Claim Credit value</th>
+                        <th className="p-3">Distribution Used / Limit Ratio</th>
+                        <th className="p-3">Expiration Threshold</th>
+                        <th className="p-3 text-right">Delete Voucher</th>
+                      </tr>
+                    </thead>
+                    <tbody className="font-dmmono text-slate-300">
+                      {giftCodes.map(gc => (
+                        <tr key={gc.code} className="border-b border-slate-800/50 hover:bg-white/5 transition">
+                          <td className="p-3 font-bold text-amber-500 flex items-center gap-2">
+                            <span>{gc.code}</span>
+                            <button onClick={() => handleCopyToClipboard(gc.code)} className="p-1 hover:bg-white/5 rounded text-slate-400 hover:text-white" title="Copy code">
+                              <Copy size={11} />
+                            </button>
+                          </td>
+                          <td className="p-3 text-slate-100 font-semibold">₹{gc.amount}</td>
+                          <td className="p-3">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-slate-300">{gc.used} / {gc.limit} claims</span>
+                              <div className="w-20 bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                                <div className="bg-[#f0c040] h-full" style={{ width: `${(gc.used / gc.limit)*100}%` }} />
+                              </div>
+                            </div>
+                          </td>
+                          <td className="p-3 text-slate-400 text-[10px]">{gc.expiry}</td>
+                          <td className="p-3 text-right">
+                            <button
+                              onClick={() => handleDeleteGiftCode(gc.code)}
+                              className="p-1 px-2.5 bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 border border-rose-500/25 rounded-md text-[10px] font-bold uppercase cursor-pointer"
+                            >
+                              <Trash2 size={11} className="inline mr-1" /> Remove
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* SECTION 6: UPI QR CHANGE */}
+          {activeTab === 'qr' && (
+            <div className="space-y-6 animate-fadeIn">
+              
+              {/* Header block */}
+              <div>
+                <h2 className="text-xl md:text-2xl font-syne font-extrabold text-[#f0c040] uppercase tracking-wider">UPI merchant Gateway settings</h2>
+                <p className="text-xs text-slate-400 mt-1">Configure active Merchant UPI payments address and upload official QR images shown to clients.</p>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                
+                {/* Configuration form block */}
+                <form onSubmit={handleSaveQrConfig} className="lg:col-span-7 bg-[#12121e] border border-[#f0c040]/10 rounded-2xl p-6 space-y-6">
+                  <h3 className="text-sm font-syne font-extrabold text-white uppercase tracking-wider mb-2 border-b border-slate-800 pb-3 flex items-center gap-2">
+                    <QrCode size={16} className="text-[#f0c040]" />
+                    UPI Endpoint Parameter
+                  </h3>
+
+                  <div className="space-y-4 font-syne">
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-widest text-[#f0c040] mb-1.5">UPI/VPA Address (Merchant endpoint)*</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. securepay@gpay"
+                        value={editUpiId}
+                        onChange={(e) => setEditUpiId(e.target.value)}
+                        className="w-full bg-[#0a0a0f] border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-100 outline-none font-dmmono focus:border-[#f0c040]"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Merchant Account Name*</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. S.K. TRADING CORP"
+                        value={editUpiName}
+                        onChange={(e) => setEditUpiName(e.target.value)}
+                        className="w-full bg-[#0a0a0f] border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-100 outline-none focus:border-[#f0c040]"
+                        required
+                      />
+                    </div>
+
+                    {/* QR Image Selection Box drag and drop */}
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Drag/Upload QR Payment Image</label>
+                      <div className="border-2 border-dashed border-slate-800 hover:border-[#f0c040]/50 rounded-2xl p-6 bg-[#0a0a0f] transition text-center space-y-2 relative">
+                        <Upload size={24} className="text-[#f0c040] mx-auto opacity-75" />
+                        <div className="text-xs text-slate-400">
+                          <span className="font-extrabold text-amber-500 hover:underline cursor-pointer">Click here to choose file</span> or drag image here
+                        </div>
+                        <span className="block text-[9px] text-slate-600">Supports JPEG, JPG or PNG formats only</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleQrImageUpload}
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Hindi warning notice box */}
+                  <div className="bg-amber-950/20 border border-amber-500/20 p-4 rounded-xl flex gap-3">
+                    <AlertTriangle size={18} className="text-amber-500 shrink-0 mt-0.5 animate-bounce" />
+                    <div>
+                      <span className="block text-amber-400 text-xs font-bold font-syne uppercase tracking-wider">High Risk warning directive!</span>
+                      <p className="text-[11px] text-slate-400 font-sans leading-relaxed mt-1">
+                        "QR save karne ke baad turat live ho jayega" - Merchant credentials synchronized in state will immediately reflect visually across active checking-out simulated user devices client-side. Protect transaction VPA addresses accurately.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full py-3.5 bg-[#f0c040] hover:bg-yellow-500 text-black font-black font-syne text-xs uppercase tracking-widest rounded-xl transition shadow-lg shadow-yellow-600/20 active:scale-95 cursor-pointer"
+                  >
+                    Confirm & Save UPI Configuration
+                  </button>
+                </form>
+
+                {/* Preview window panel on right */}
+                <div className="lg:col-span-5 bg-[#12121e] border border-[#f0c040]/10 rounded-2xl p-6 flex flex-col justify-between">
+                  <div>
+                    <h3 className="text-sm font-syne font-extrabold text-white uppercase tracking-wider mb-4">Client Checkout Preview Live</h3>
+                    
+                    <div className="bg-[#0a0a0f] rounded-2xl p-5 border border-slate-800 text-center space-y-5">
+                      <span className="text-[9px] tracking-widest uppercase font-black text-slate-500 block">Scan QR Code To Pay</span>
+                      
+                      {/* Interactive preview image from file upload */}
+                      <div className="aspect-square max-w-[200px] bg-[#12121e] border-2 border-slate-800 rounded-2xl p-3 mx-auto flex items-center justify-center">
+                        {qrUploadPreview || upiQr.qrDataUrl ? (
+                          <img 
+                            src={qrUploadPreview || upiQr.qrDataUrl} 
+                            alt="Preview merchant QR Code" 
+                            className="w-full h-full object-contain rounded-lg"
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          <QrCode size={40} className="text-slate-600 animate-pulse" />
+                        )}
+                      </div>
+
+                      <div className="space-y-1 text-center font-mono text-xs">
+                        <div className="text-slate-300 font-sans font-bold uppercase">{editUpiName || upiQr.accountName}</div>
+                        <div className="text-slate-500 text-[11px] select-all">{editUpiId || upiQr.upiId}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 pt-4 border-t border-slate-800 text-slate-500 font-syne text-[10px] leading-relaxed">
+                    Client applications dynamically generate deep UPI links mapping payment configurations saved above to automate quick mobile wallets payments flows.
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+        </main>
+      </div>
+
+      {/* MODAL WINDOW OVERLAY FOR UPDATING MEMBER RECORD CARDS */}
+      <AnimatePresence>
+        {editingUser && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-[#000]/70 backdrop-blur-sm flex items-center justify-center p-4"
+          >
+            <motion.div 
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.95 }}
+              className="bg-[#12121e] border border-[#f0c040]/30 rounded-2xl p-6 max-w-md w-full relative space-y-5 shadow-2xl"
+            >
+              <button 
+                onClick={() => setEditingUser(null)}
+                className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 hover:bg-white/5 rounded-lg transition"
+              >
+                <X size={16} />
+              </button>
+
+              <div className="font-syne">
+                <h3 className="text-base font-extrabold text-[#f0c040] uppercase tracking-wider flex items-center gap-2">
+                  <Pencil size={15} /> Modify Player Wallet & Details
+                </h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">Player ID reference code: {editingUser.id}</p>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5 font-syne">Registered Name</label>
+                  <input
+                    type="text"
+                    value={editUserName}
+                    onChange={(e) => setEditUserName(e.target.value)}
+                    className="w-full bg-[#0a0a0f] border border-slate-800 rounded-xl px-4 pr-4 py-2.5 text-xs text-slate-100 outline-none focus:border-[#f0c040]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5 font-syne">Direct Wallet Balance (₹)</label>
+                  <input
+                    type="number"
+                    value={editUserBalance}
+                    onChange={(e) => setEditUserBalance(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-[#0a0a0f] border border-slate-800 rounded-xl px-4 pr-4 py-2.5 text-xs text-slate-100 outline-none font-dmmono focus:border-[#f0c040]"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 font-syne text-xs uppercase tracking-widest font-black pt-2">
+                <button
+                  onClick={() => setEditingUser(null)}
+                  className="flex-1 py-3 text-center border border-slate-700 text-slate-300 rounded-xl hover:bg-white/5 transition"
                 >
                   Cancel
                 </button>
-                <button 
-                  onClick={handleSubmitRejection}
-                  type="button"
-                  className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl shadow-lg transition duration-150 cursor-pointer active:scale-95 text-center"
+                <button
+                  onClick={handleSaveUserEdit}
+                  className="flex-1 py-3 text-center bg-gradient-to-r from-[#f0c040] to-yellow-600 text-black rounded-xl hover:brightness-110 transition active:scale-95"
                 >
-                  Confirm Rejection
+                  Save Changes
                 </button>
               </div>
-            </div>
-          </div>
+            </motion.div>
+          </motion.div>
         )}
-
-      </main>
+      </AnimatePresence>
     </div>
   );
 };

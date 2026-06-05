@@ -54,16 +54,16 @@ export default function SupportChat({ onClose, userName = 'Lucky Gamer', userAva
     setTimeout(() => {
       setIsTyping(false);
       const queryLower = userQuery.toLowerCase();
-      let replyText = "Thank you for contacting Neon Trade Live Support. Our accounts manager is verifying your account details. Please hold on ...";
+      let replyText = "Thank you for contacting Tech win Live Support. Our accounts manager is verifying your account details. Please hold on ...";
       
       if (queryLower.includes("withdraw") || queryLower.includes("withdrawal") || queryLower.includes("paisa nikal") || queryLower.includes("nical") || queryLower.includes("nikalna") || queryLower.includes("paisae nikal")) {
-        replyText = "Hello! Neon Trade withdrawals are processed instantly and credited through high-speed bank UPI channels. Normal timeline is 2 to 5 minutes. If your balance hasn't arrived, please verify that your UPI ID is linked correctly in the Withdraw section of the Wallet tab.";
+        replyText = "Hello! Tech win withdrawals are processed instantly and credited through high-speed bank UPI channels. Normal timeline is 2 to 5 minutes. If your balance hasn't arrived, please verify that your UPI ID is linked correctly in the Withdraw section of the Wallet tab.";
       } else if (queryLower.includes("deposit") || queryLower.includes("add money") || queryLower.includes("balance load") || queryLower.includes("paisa add") || queryLower.includes("recharge") || queryLower.includes("deposit failed")) {
-        replyText = "Hello! For instant deposits, select UPI QR in the Deposit section of the Mine/Wallet tab. Scan the golden QR with any UPI app (GPay, PhonePe, Paytm). Your credits will automatically reflect in your Neon Trade wallet inside 30 seconds. Feel free to refresh your balance at the top!";
+        replyText = "Hello! For instant deposits, select UPI QR in the Deposit section of the Mine/Wallet tab. Scan the golden QR with any UPI app (GPay, PhonePe, Paytm). Your credits will automatically reflect in your Tech win wallet inside 30 seconds. Feel free to refresh your balance at the top!";
       } else if (queryLower.includes("bonus") || queryLower.includes("promo") || queryLower.includes("gift") || queryLower.includes("code") || queryLower.includes("coupon")) {
         replyText = "Awesome! We have active promotional codes for new registrants. Go to 'Gifts & Promos' in the Mine tab menu, and try entering secret codes: [ WELCOME ] to claim ₹250, [ LUCKY777 ] to claim ₹100, or [ VIPWIN ] to claim ₹500 immediately!";
       } else if (queryLower.includes("hi") || queryLower.includes("hello") || queryLower.includes("hey") || queryLower.includes("sir") || queryLower.includes("help") || queryLower.includes("supp") || queryLower.includes("baat")) {
-        replyText = "Hello! Welcome to Neon Trade Premium Desk support. How can we help you with deposits, withdrawals, or gaming history queries today? Type 'deposit', 'withdraw' or 'promo' for instant helper instructions.";
+        replyText = "Hello! Welcome to Tech win Premium Desk support. How can we help you with deposits, withdrawals, or gaming history queries today? Type 'deposit', 'withdraw' or 'promo' for instant helper instructions.";
       }
       
       const supportMsg: Message = {
