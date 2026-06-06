@@ -1427,9 +1427,16 @@ export default function App() {
   });
 
   // Standalone Timer & API Fallback for Static Environments (Netlify, etc.)
+  const [socketConnected, setSocketConnected] = useState(false);
+  const socketConnectedRef = useRef(false);
+  useEffect(() => {
+    socketConnectedRef.current = socketConnected;
+  }, [socketConnected]);
+
   useEffect(() => {
     // 1. Local Timer Computation (UTC based)
     const updateLocalTimers = () => {
+      if (socketConnectedRef.current) return;
       const nowTs = Math.floor(Date.now() / 1000);
       setWingoTimers({
         '30s': 30 - (nowTs % 30),
@@ -1505,7 +1512,6 @@ export default function App() {
   const [chartPage, setChartPage] = useState(1);
   const [historyPage, setHistoryPage] = useState(1);
   const [myHistoryPage, setMyHistoryPage] = useState(1);
-  const [socketConnected, setSocketConnected] = useState(false);
   const [activeWingoRoom, setActiveWingoRoom] = useState<string | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
 
@@ -4222,7 +4228,7 @@ export default function App() {
                     <div className="w-full flex flex-col min-h-screen" style={{ background: 'linear-gradient(to bottom, #4a0f10, #260506)' }}>
                     
                     {/* Brand Header representing Wingo 30s top bar directly */}
-                    <div className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-[410px] grid grid-cols-3 items-center px-4 py-2 bg-[#4d1213] border-b border-[#ffd275]/10 z-30 shadow-md">
+                    <div className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-[410px] grid grid-cols-3 items-center px-4 py-1.5 bg-[#4d1213] border-b border-[#ffd275]/10 z-30 shadow-md">
                       
                       {/* Left aligned Back button */}
                       <div className="flex items-center justify-start">
@@ -4246,7 +4252,7 @@ export default function App() {
                         <img 
                           src={gameLogo} 
                           alt="Neon Trade Brand Logo" 
-                          className="h-[64px] -my-3 w-auto object-contain select-none filter drop-shadow-[0_2px_5px_rgba(0,0,0,0.55)] pointer-events-none z-10"
+                          className="h-[52px] -my-2 w-auto object-contain select-none filter drop-shadow-[0_2px_5px_rgba(0,0,0,0.55)] pointer-events-none z-10"
                           referrerPolicy="no-referrer"
                           draggable={false}
                           onContextMenu={(e) => e.preventDefault()}
@@ -4849,7 +4855,7 @@ export default function App() {
                             }}
                           >
                             {isBettingDisabled && (
-                                <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/50 rounded-[28px] pointer-events-auto cursor-not-allowed animate-in fade-in duration-300">
+                                <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/60 backdrop-blur-[2px] rounded-[28px] pointer-events-auto cursor-not-allowed">
                                     <div className="flex gap-3">
                                         {String(activeTimer).padStart(2, '0').split('').map((digit, i) => (
                                             <div key={i} className="bg-[#5c1c1e] text-[#FFD700] text-7xl font-black w-24 h-36 flex items-center justify-center rounded-[20px]">
