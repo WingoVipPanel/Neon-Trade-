@@ -168,7 +168,7 @@ export default function MobileAdminPanelView({ onLogout, onToggleView }: MobileA
   // Wingo Socket Sync
   useEffect(() => {
     let active = true;
-    const socket = io({ transports: ['websocket'], reconnectionAttempts: 10, timeout: 20000, autoConnect: true });
+    const socket = io({ transports: ['websocket'], reconnectionAttempts: Infinity, timeout: 20000, autoConnect: true });
     socketRef.current = socket;
 
     socket.on('connect', () => { if(active) setSocketConnected(true); });
