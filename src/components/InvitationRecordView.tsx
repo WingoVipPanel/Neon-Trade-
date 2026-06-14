@@ -116,7 +116,7 @@ export default function InvitationRecordView({ onClose, selectedLang, uid }: Inv
                   {selectedLang === 'en' ? 'Deposit amount' : 'जमा राशि'}
                 </span>
                 <span className="text-[#df1c1c] text-sm font-black">
-                  ₹{record.deposit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  ₹{(record.deposit || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
             </div>

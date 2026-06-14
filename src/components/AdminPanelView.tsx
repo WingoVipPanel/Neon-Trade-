@@ -31,6 +31,7 @@ import {
   Award
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { io } from 'socket.io-client';
 
 // ==========================================
 // DATA STRUCTURES & SCHEMAS
@@ -73,10 +74,14 @@ export interface ClaimCode {
   expiry: string;
 }
 
-export interface UpiQrConfig {
+export interface UpiItem {
+  id: string;
   upiId: string;
-  accountName: string;
-  qrDataUrl: string; // Base64 encoded or preset representation
+}
+
+export interface UpiConfig {
+  activeId: string;
+  list: UpiItem[];
 }
 
 // Default Seed Records
@@ -151,16 +156,24 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
   const [transactions, setTransactions] = useState<DepositWithdrawalTx[]>([]);
   const [draws, setDraws] = useState<LatestDrawResult[]>([]);
   const [giftCodes, setGiftCodes] = useState<ClaimCode[]>([]);
-  const [upiQr, setUpiQr] = useState<UpiQrConfig>({
-    upiId: 'colorofficial@ybl',
-    accountName: 'WINTRADE TRADING PVT LTD',
-    qrDataUrl: 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=upi://pay?pa=colorofficial@ybl%26pn=WINTRADE%20TRADING%26am=100'
+  const [upiQr, setUpiQr] = useState<UpiConfig>({
+    activeId: 'upi-1',
+    list: [
+      { id: 'upi-1', upiId: 'mojid3mojid360' },
+      { id: 'upi-2', upiId: '6207390261@ibl' },
+      { id: 'upi-3', upiId: 'reererere' },
+      { id: 'upi-4', upiId: 'spath505@oksbi' }
+    ]
   });
 
   // Wingo Room Countdown Controller State
-  const [secondsLeft, setSecondsLeft] = useState(180); // Default: 3 min (180s)
-  const [isTimerActive, setIsTimerActive] = useState(true);
-  const [currentPeriod, setCurrentPeriod] = useState('202606041125');
+  const [activeAdminRoom, setActiveAdminRoom] = useState<'30s' | '1m' | '3m' | '5m'>('30s');
+  const [roomTimers, setRoomTimers] = useState<Record<string, number>>({'30s': 0, '1m': 0, '3m': 0, '5m': 0});
+  const [roomData, setRoomData] = useState<Record<string, any>>({'30s': { history:[], lastPeriod: '' }, '1m': { history:[], lastPeriod: '' }, '3m': { history:[], lastPeriod: '' }, '5m': { history:[], lastPeriod: '' }});
+  const [serverNextPrediction, setServerNextPrediction] = useState<Record<string, number|null>>({'30s': null, '1m': null, '3m': null, '5m': null});
+  const socketRef = useRef<any>(null);
+  const [socketConnected, setSocketConnected] = useState(false);
+
   const [selectedNextResult, setSelectedNextResult] = useState<number | null>(null);
 
   // Filters and Search parameters
@@ -179,9 +192,9 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
   const [latestGeneratedCode, setLatestGeneratedCode] = useState<string | null>(null);
 
   // UPI configuration edit state
-  const [editUpiId, setEditUpiId] = useState('');
-  const [editUpiName, setEditUpiName] = useState('');
-  const [qrUploadPreview, setQrUploadPreview] = useState<string | null>(null);
+  const [newUpiId, setNewUpiId] = useState('');
+  const [editingUpiId, setEditingUpiId] = useState<string | null>(null);
+  const [editingUpiValue, setEditingUpiValue] = useState('');
 
   // Notification Toast state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -214,13 +227,8 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
     }
 
     // Historical Draw Results Serializer
-    const localDraws = localStorage.getItem('wt_admin_draws');
-    if (localDraws) {
-      setDraws(JSON.parse(localDraws));
-    } else {
-      setDraws(SEED_DRAWS);
-      localStorage.setItem('wt_admin_draws', JSON.stringify(SEED_DRAWS));
-    }
+    // Draws managed by server socket state
+    setDraws(SEED_DRAWS);
 
     // Gift Voucher Codes Serializer
     const localGifts = localStorage.getItem('wt_admin_gifts');
@@ -231,24 +239,19 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
       localStorage.setItem('wt_admin_gifts', JSON.stringify(SEED_GIFT_CODES));
     }
 
-    // QR Configuration Serializer
+    // UPI Configuration Serializer
     const localQr = localStorage.getItem('wt_admin_qr_config');
     if (localQr) {
-      const q = JSON.parse(localQr);
-      setUpiQr(q);
-      setEditUpiId(q.upiId);
-      setEditUpiName(q.accountName);
-    } else {
-      setEditUpiId(upiQr.upiId);
-      setEditUpiName(upiQr.accountName);
+      try {
+        const q = JSON.parse(localQr);
+        if (q && q.list) {
+          setUpiQr(q);
+        }
+      } catch(e) {}
     }
 
     // Timer status
-    const savedPeriod = localStorage.getItem('wt_admin_current_period');
-    if (savedPeriod) setCurrentPeriod(savedPeriod);
-
-    const savedSeconds = localStorage.getItem('wt_admin_timer_secs');
-    if (savedSeconds) setSecondsLeft(parseInt(savedSeconds));
+    
   }, []);
 
   // Sync to database triggers helper
@@ -262,83 +265,92 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
   };
 
   // -------------------------------------------------------------
-  // COUNTDOWN CLOCK TICK LOGIC
+  // COUNTDOWN CLOCK TICK LOGIC (NOW SOCKET-SYNCED)
   // -------------------------------------------------------------
+
   useEffect(() => {
-    let timerInterval: any = null;
-    if (isTimerActive && secondsLeft > 0) {
-      timerInterval = setInterval(() => {
-        setSecondsLeft((prev) => {
-          const nextVal = prev - 1;
-          localStorage.setItem('wt_admin_timer_secs', String(nextVal));
-          return nextVal;
-        });
-      }, 1000);
-    } else if (secondsLeft === 0) {
-      // Periodic trigger: settle the Wingo Draw!
-      triggerDrawSettle();
-    }
+    let active = true;
+    const socket = io({
+      transports: ['websocket'],
+      reconnectionAttempts: 10,
+      timeout: 20000,
+      autoConnect: true
+    });
+    socketRef.current = socket;
+
+    socket.on('connect', () => { if (active) setSocketConnected(true); });
+    socket.on('disconnect', () => { if (active) setSocketConnected(false); });
+    
+    socket.on('initial_data', (rData: any) => {
+       if (active) setRoomData(rData);
+    });
+
+    socket.on('timer_sync', ({ room, time }: any) => {
+       if (active) setRoomTimers(prev => ({ ...prev, [room]: time }));
+    });
+    
+    socket.on('prediction_updated', ({ room, nextManualResult }: any) => {
+       if (active) {
+         setServerNextPrediction(prev => ({ ...prev, [room]: nextManualResult }));
+         // Update local pick if in that room
+         if (activeAdminRoom === room) {
+           setSelectedNextResult(nextManualResult ?? null);
+         }
+       }
+    });
+
+    socket.on('new_result', ({ room, result }: any) => {
+       if (active) {
+         setRoomData(prev => {
+             let state = { ...prev };
+             if (state[room]) {
+                 state[room].history = [result, ...(state[room].history || []).filter((h: any) => h.period !== result.period)].slice(0, 50);
+                 state[room].lastPeriod = result.period;
+             }
+             return state;
+         });
+       }
+    });
+
     return () => {
-      if (timerInterval) clearInterval(timerInterval);
+      active = false;
+      socket.disconnect();
     };
-  }, [secondsLeft, isTimerActive]);
+  }, [activeAdminRoom]);
+
+  // Read current active values dynamically
+  const activeSecondsLeft = roomTimers[activeAdminRoom] || 0;
+  const activeDraws = roomData[activeAdminRoom]?.history || [];
+  
+  // Predict next period string based on lastPeriod logic...
+  let lastPeriod = roomData[activeAdminRoom]?.lastPeriod || "20260522100012000";
+  let activeCurrentPeriod = "";
+  try {
+     const bp = lastPeriod.substring(0, 13);
+     const seq = lastPeriod.substring(13);
+     activeCurrentPeriod = bp + String(parseInt(seq) + 1).padStart(4, '0');
+  } catch(e) {
+     activeCurrentPeriod = String(parseInt(lastPeriod) + 1);
+  }
+  // (Old local timer interval removed in favor of Server Socket Sync)
 
   // Settle Round Event Output
-  const triggerDrawSettle = () => {
-    // 1. Resolve selected choice or fallback to pseudo-random distribution
-    const drawNumber = selectedNextResult !== null ? selectedNextResult : Math.floor(Math.random() * 10);
-    
-    // Standard bets simulated figure calculations
-    const totalBets = Math.floor(5000 + Math.random() * 18000);
-    const payout = Math.floor(totalBets * ([0, 5].includes(drawNumber) ? 1.5 : 2.0));
-
-    const resultRecord: LatestDrawResult = {
-      period: currentPeriod,
-      number: drawNumber,
-      color: getNumberColorText(drawNumber),
-      size: getNumberSize(drawNumber),
-      totalBets: totalBets,
-      payout: payout
-    };
-
-    // Prepend resulting record & truncate at 10 items limit
-    const nextDraws = [resultRecord, ...draws].slice(0, 10);
-    setDraws(nextDraws);
-    syncLocal('wt_admin_draws', nextDraws);
-
-    // Auto increment period sequence ID
-    const nextPrdVal = String(parseInt(currentPeriod) + 1);
-    setCurrentPeriod(nextPrdVal);
-    localStorage.setItem('wt_admin_current_period', nextPrdVal);
-
-    // Reset clock back to 3 mins (180s)
-    setSecondsLeft(180);
-    localStorage.setItem('wt_admin_timer_secs', '180');
-
-    // Deselect overrides
-    setSelectedNextResult(null);
-    notifyToast(`Period ${currentPeriod} draw settled: Mapped Number ${drawNumber}!`);
-  };
+  const triggerDrawSettle = () => { notifyToast('Wait for server auto-settle round... Timer controls are server-authoritative.'); return; };
 
   // Timer controls handles
-  const handleResetTimer = () => {
-    setSecondsLeft(180);
-    localStorage.setItem('wt_admin_timer_secs', '180');
-    notifyToast("Timer has been reset to 3 minutes.");
-  };
+  const handleResetTimer = () => { notifyToast('Disabled in Server-Sync mode.'); return; };
 
-  const handleToggleTimer = () => {
-    setIsTimerActive(!isTimerActive);
-    notifyToast(isTimerActive ? "Timer counts Paused." : "Timer counts Resumed.");
-  };
+  const handleToggleTimer = () => { notifyToast('Disabled in Server-Sync mode.'); return; };
 
   // Lock target number
   const handleConfirmNextResult = () => {
     if (selectedNextResult === null) {
-      notifyToast("Please select a number from 0-9 before confirming next result.");
+      notifyToast("Select a number, or clear lock by clicking active again.");
+      if (socketRef.current) socketRef.current.emit('set_prediction', { room: activeAdminRoom, number: null });
       return;
     }
-    notifyToast(`Success: Draw outcome for Period ${currentPeriod} locked on Number ${selectedNextResult}!`);
+    if (socketRef.current) socketRef.current.emit('set_prediction', { room: activeAdminRoom, number: selectedNextResult });
+    notifyToast(`Success: Overruled server draw for ${activeAdminRoom} to ${selectedNextResult}!`);
   };
 
   // -------------------------------------------------------------
@@ -496,35 +508,44 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
   // -------------------------------------------------------------
   // UPI QR INTERACTIVE MANAGER
   // -------------------------------------------------------------
-  const handleQrImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (event.target?.result) {
-          setQrUploadPreview(event.target.result as string);
-        }
-      };
-      reader.readAsDataURL(file);
-    }
+  const handleAddUpi = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!newUpiId.trim()) return notifyToast("Enter a UPI ID");
+    
+    const newItem: UpiItem = { id: `upi-${Date.now()}`, upiId: newUpiId.trim() };
+    const nextConfig = { ...upiQr, list: [newItem, ...upiQr.list] };
+    if (!nextConfig.activeId) nextConfig.activeId = newItem.id;
+    
+    setUpiQr(nextConfig);
+    setNewUpiId('');
+    syncLocal('wt_admin_qr_config', nextConfig);
+    notifyToast("UPI ID Added");
   };
 
-  const handleSaveQrConfig = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editUpiId.trim()) {
-      notifyToast("Please input a valid UPI ID Address");
-      return;
+  const handleDeleteUpi = (id: string) => {
+    const nextList = upiQr.list.filter(u => u.id !== id);
+    const nextConfig = { ...upiQr, list: nextList };
+    if (upiQr.activeId === id) {
+      nextConfig.activeId = nextList[0]?.id || '';
     }
+    setUpiQr(nextConfig);
+    syncLocal('wt_admin_qr_config', nextConfig);
+    notifyToast("UPI ID Deleted");
+  };
 
-    const updatedConf: UpiQrConfig = {
-      upiId: editUpiId,
-      accountName: editUpiName || 'OFFICIAL WALLET',
-      qrDataUrl: qrUploadPreview || upiQr.qrDataUrl
-    };
+  const saveEditUpi = (id: string) => {
+    if (!editingUpiValue.trim()) return;
+    const nextList = upiQr.list.map((u) => u.id === id ? { ...u, upiId: editingUpiValue.trim() } : u);
+    const nextConfig = { ...upiQr, list: nextList };
+    setUpiQr(nextConfig);
+    setEditingUpiId(null);
+    syncLocal('wt_admin_qr_config', nextConfig);
+    notifyToast("UPI Edited");
+  };
 
-    setUpiQr(updatedConf);
-    syncLocal('wt_admin_qr_config', updatedConf);
-    notifyToast("Success: UPI QR & Merchant account updated.");
+  const handleSaveActiveUpi = () => {
+    syncLocal('wt_admin_qr_config', upiQr);
+    notifyToast("Active UPI Saved!");
   };
 
   return (
@@ -563,7 +584,7 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
                 <Sliders size={16} className="text-black" />
               </div>
               <div>
-                <h2 className="font-syne font-extrabold text-sm tracking-wider uppercase text-[#f0c040]">Wingo Core</h2>
+                <h2 className="font-display font-bold text-sm tracking-wider uppercase text-[#f0c040]">Wingo Core</h2>
                 <span className="text-[9px] tracking-widest font-dmmono text-slate-500">ADMIN CONTROL</span>
               </div>
             </div>
@@ -593,7 +614,7 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
                       setActiveTab(item.id as any);
                       if (window.innerWidth < 768) setIsSidebarOpen(false);
                     }}
-                    className={`w-full py-3.5 px-4 rounded-xl flex items-center justify-between transition-all duration-200 cursor-pointer text-xs font-syne uppercase tracking-wider ${isSelected ? 'bg-gradient-to-r from-[#f0c040]/15 to-transparent text-[#f0c040] border-l-2 border-[#f0c040]' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'}`}
+                    className={`w-full py-3.5 px-4 rounded-xl flex items-center justify-between transition-all duration-200 cursor-pointer text-xs font-display uppercase tracking-wider ${isSelected ? 'bg-gradient-to-r from-[#f0c040]/15 to-transparent text-[#f0c040] border-l-2 border-[#f0c040]' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'}`}
                   >
                     <div className="flex items-center gap-3">
                       {item.icon}
@@ -620,7 +641,7 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
 
           <button 
             onClick={onLogout}
-            className="w-full py-3 bg-[#e11d48]/10 hover:bg-[#e11d48]/20 text-[#f43f5e] font-bold text-xs font-syne uppercase tracking-widest rounded-xl transition flex items-center justify-center gap-2 cursor-pointer border border-[#e11d48]/25"
+            className="w-full py-3 bg-[#e11d48]/10 hover:bg-[#e11d48]/20 text-[#f43f5e] font-bold text-xs font-display uppercase tracking-widest rounded-xl transition flex items-center justify-center gap-2 cursor-pointer border border-[#e11d48]/25"
           >
             <LogOut size={14} />
             Terminal Logout
@@ -637,7 +658,7 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
             <button className="md:hidden text-[#f0c040] p-1.5 hover:bg-[#12121e] rounded-lg" onClick={() => setIsSidebarOpen(true)}>
               <Menu size={20} />
             </button>
-            <h1 className="text-sm md:text-md font-syne font-extrabold uppercase tracking-wide text-slate-100 flex items-center gap-1.5">
+            <h1 className="text-sm md:text-base font-display font-bold uppercase tracking-wide text-slate-100 flex items-center gap-1.5">
               <span className="text-[#f0c040]">/</span> PANEL CORE
             </h1>
           </div>
@@ -646,7 +667,7 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
             {onToggleView && (
               <button 
                 onClick={onToggleView}
-                className="px-3 py-1.5 md:px-4 md:py-2 bg-[#f0c040] hover:bg-yellow-500 text-black font-extrabold rounded-xl text-[10px] md:text-xs uppercase tracking-wider transition-all duration-200 shadow-md active:scale-95 cursor-pointer whitespace-nowrap"
+                className="px-3 py-1.5 md:px-4 md:py-2 bg-[#f0c040] hover:bg-yellow-500 text-black font-bold rounded-xl text-[10px] md:text-xs uppercase tracking-wider transition-all duration-200 shadow-md active:scale-95 cursor-pointer whitespace-nowrap"
               >
                 <span className="hidden sm:inline">Back To </span>Game View
               </button>
@@ -666,14 +687,14 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
               
               {/* Header block */}
               <div>
-                <h2 className="text-xl md:text-2xl font-syne font-extrabold text-[#f0c040] uppercase tracking-wider">Overall Dashboard</h2>
+                <h2 className="text-lg md:text-xl font-display font-bold text-[#f0c040] uppercase tracking-wider">Overall Dashboard</h2>
                 <p className="text-xs text-slate-400 mt-1">Global financial metrics, game distribution strategy & user system logs.</p>
               </div>
 
               {/* 4 Golden Stats blocks */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
                 {[
-                  { label: 'Cumulative Reserves', value: `₹${cumulativeBalances.toLocaleString()}`, icon: <Wallet size={20} className="text-amber-400" />, desc: 'Combined player balance' },
+                  { label: 'Cumulative Reserves', value: `₹${(cumulativeBalances || 0).toLocaleString()}`, icon: <Wallet size={20} className="text-amber-400" />, desc: 'Combined player balance' },
                   { label: 'Total Verified Recharges', value: `₹${transactions.filter(t => t.type === 'Deposit' && t.status === 'Approved').reduce((a,c) => a+c.amount, 0).toLocaleString()}`, icon: <TrendingUp size={20} className="text-emerald-400" />, desc: 'Deposit ledger cumulative' },
                   { label: 'Released Cash Cashouts', value: `₹${transactions.filter(t => t.type === 'Withdraw' && t.status === 'Approved').reduce((a,c) => a+c.amount, 0).toLocaleString()}`, icon: <Coins size={20} className="text-rose-400" />, desc: 'Approved withdrawal outlays' },
                   { label: 'Total Player directory', value: users.length, icon: <Users size={20} className="text-blue-400" />, desc: 'Registered accounts' }
@@ -683,12 +704,12 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
                       {stat.icon}
                     </div>
                     <div className="flex justify-between items-start mb-4">
-                      <span className="text-[10px] tracking-widest font-syne font-black uppercase text-slate-400">{stat.label}</span>
+                      <span className="text-[10px] tracking-widest font-display font-black uppercase text-slate-400">{stat.label}</span>
                       <div className="p-1.5 rounded-lg bg-white/5 border border-white/10">
                         {stat.icon}
                       </div>
                     </div>
-                    <div className="text-xl md:text-2xl font-dmmono font-black text-[#f0c040] tracking-tight">{stat.value}</div>
+                    <div className="text-lg md:text-xl font-dmmono font-black text-[#f0c040] tracking-tight">{stat.value}</div>
                     <p className="text-[10px] text-slate-500 mt-1">{stat.desc}</p>
                   </div>
                 ))}
@@ -698,7 +719,7 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
               <div className="bg-[#12121e] border border-[#f0c040]/10 rounded-2xl p-6">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6">
                   <div>
-                    <h3 className="text-sm font-syne font-extrabold text-white uppercase tracking-wider flex items-center gap-2">
+                    <h3 className="text-sm font-display font-bold text-white uppercase tracking-wider flex items-center gap-2">
                       <TrendingUp size={16} className="text-[#f0c040]" />
                       Deposit vs Withdrawal Outflow Chart
                     </h3>
@@ -753,15 +774,33 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
               
               {/* Header block */}
               <div>
-                <h2 className="text-xl md:text-2xl font-syne font-extrabold text-[#f0c040] uppercase tracking-wider text-left">Wingo Control Cabinet</h2>
-                <p className="text-xs text-slate-400 mt-1">Real-time clock trigger cabinet to pause, resume, reset periods or enforce custom outcomes.</p>
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div>
+                    <h2 className="text-lg md:text-xl font-display font-bold text-[#f0c040] uppercase tracking-wider text-left">
+                      Wingo Control Cabinet
+                      {socketConnected ? <span className="ml-3 inline-flex items-center gap-1 text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded-full"><div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"/> LIVE CONNECTED</span> : <span className="ml-3 inline-flex items-center gap-1 text-[10px] bg-red-500/20 text-red-400 px-2 py-1 rounded-full">OFFLINE</span>}
+                    </h2>
+                    <p className="text-xs text-slate-400 mt-1">Manage predictions directly injected into active server loop mechanisms.</p>
+                  </div>
+                  <div className="flex gap-2 bg-[#0a0a0f] p-1.5 rounded-xl border border-slate-800">
+                    {(['30s', '1m', '3m', '5m'] as const).map(room => (
+                      <button 
+                        key={room} 
+                        onClick={() => setActiveAdminRoom(room)} 
+                        className={`px-4 py-2 rounded-lg text-xs font-bold font-dmmono uppercase transition ${activeAdminRoom === room ? 'bg-[#f0c040] text-black shadow-md' : 'text-slate-400 hover:text-white'}`}
+                      >
+                        {room}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                 
                 {/* Timer Clock Circle Panel */}
                 <div className="lg:col-span-5 bg-[#12121e] border border-[#f0c040]/10 rounded-2xl p-6 flex flex-col items-center justify-center space-y-6">
-                  <span className="text-[10px] tracking-widest font-syne font-black uppercase text-slate-400">Live Area Timer</span>
+                  <span className="text-[10px] tracking-widest font-display font-black uppercase text-slate-400">Live Area Timer</span>
                   
                   {/* Circle SVG Progress tracker */}
                   <div className="relative w-44 h-44 flex items-center justify-center">
@@ -771,18 +810,18 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
                         cx="88" cy="88" r="76" 
                         stroke="#f0c040" strokeWidth="8" fill="transparent" 
                         strokeDasharray={2 * Math.PI * 76} 
-                        strokeDashoffset={2 * Math.PI * 76 * (1 - secondsLeft / 180)}
+                        strokeDashoffset={2 * Math.PI * 76 * (1 - activeSecondsLeft / (activeAdminRoom === '30s' ? 30 : activeAdminRoom === '1m' ? 60 : activeAdminRoom === '3m' ? 180 : 300))}
                         className="transition-all duration-1000 ease-linear"
                         strokeLinecap="round"
                       />
                     </svg>
                     <div className="text-center z-10">
-                      <span className="block text-[11px] tracking-widest uppercase font-syne font-extrabold text-slate-400">PERIOD {currentPeriod}</span>
+                      <span className="block text-[11px] tracking-widest uppercase font-display font-bold text-slate-400">PERIOD {activeCurrentPeriod}</span>
                       <span className="text-4xl font-dmmono font-black text-white inline-block mt-1">
-                        {Math.floor(secondsLeft / 60)}:{(secondsLeft % 60).toString().padStart(2, '0')}
+                        {Math.floor(activeSecondsLeft / 60)}:{(activeSecondsLeft % 60).toString().padStart(2, '0')}
                       </span>
-                      <span className={`block text-[9px] tracking-widest uppercase font-bold mt-2 ${isTimerActive ? 'text-emerald-500 shadow-sm' : 'text-rose-500 animate-pulse'}`}>
-                        {isTimerActive ? 'COUNTING' : 'PAUSED'}
+                      <span className={`block text-[9px] tracking-widest uppercase font-bold mt-2 ${true ? 'text-emerald-500 shadow-sm' : 'text-rose-500 animate-pulse'}`}>
+                        {true ? 'COUNTING' : 'PAUSED'}
                       </span>
                     </div>
                   </div>
@@ -791,10 +830,10 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
                   <div className="flex items-center gap-3 w-full">
                     <button 
                       onClick={handleToggleTimer}
-                      className="flex-1 py-3 bg-[#f0c040]/10 hover:bg-[#f0c040]/20 border border-[#f0c040]/30 text-[#f0c040] rounded-xl font-syne text-xs uppercase font-extrabold tracking-widest transition flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                      className="flex-1 py-3 bg-[#f0c040]/10 hover:bg-[#f0c040]/20 border border-[#f0c040]/30 text-[#f0c040] rounded-xl font-display text-xs uppercase font-bold tracking-widest transition flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                     >
-                      {isTimerActive ? <Pause size={14} /> : <Play size={14} />}
-                      {isTimerActive ? 'Pause' : 'Resume'}
+                      {true ? <Pause size={14} /> : <Play size={14} />}
+                      {true ? 'Pause' : 'Resume'}
                     </button>
                     <button 
                       onClick={handleResetTimer}
@@ -805,7 +844,7 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
                     </button>
                     <button 
                       onClick={triggerDrawSettle}
-                      className="py-3 px-4 bg-emerald-500 hover:bg-emerald-600 text-black rounded-xl font-syne text-xs uppercase font-black tracking-wider transition active:scale-95 cursor-pointer"
+                      className="py-3 px-4 bg-emerald-500 hover:bg-emerald-600 text-black rounded-xl font-display text-xs uppercase font-black tracking-wider transition active:scale-95 cursor-pointer"
                     >
                       Force Draw
                     </button>
@@ -817,7 +856,7 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
                   <div className="space-y-4">
                     <div className="flex items-center justify-between border-b border-[#f0c040]/10 pb-4">
                       <div>
-                        <h4 className="text-sm font-syne font-extrabold text-white uppercase tracking-wider">Set Next Period Result</h4>
+                        <h4 className="text-sm font-display font-bold text-white uppercase tracking-wider">Set Next Period Result</h4>
                         <p className="text-[10px] text-slate-400">Manipulate draw criteria manually or default to zero payout profit mode.</p>
                       </div>
                       <span className="px-3 py-1 font-dmmono text-[11px] font-bold bg-[#f0c040]/10 text-[#f0c040] border border-[#f0c040]/20 rounded-full">
@@ -827,7 +866,7 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
 
                     {/* Numeric Selector Grid */}
                     <div>
-                      <span className="block text-[10px] tracking-widest font-syne font-black uppercase text-slate-400 mb-3 text-left">Choose Winner Block Number (0 - 9)</span>
+                      <span className="block text-[10px] tracking-widest font-display font-black uppercase text-slate-400 mb-3 text-left">Choose Winner Block Number (0 - 9)</span>
                       <div className="grid grid-cols-5 gap-2.5">
                         {Array.from({ length: 10 }).map((_, num) => {
                           const isSelected = selectedNextResult === num;
@@ -852,7 +891,7 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
 
                     {/* MAPPED FORMULA TRUTH RULES */}
                     <div className="bg-[#0a0a0f] p-4 rounded-xl border border-[#f0c040]/5 space-y-1">
-                      <div className="flex items-center gap-1.5 text-[10px] text-zinc-500 border-b border-white/5 pb-1 mb-2 font-syne font-bold uppercase tracking-wider">
+                      <div className="flex items-center gap-1.5 text-[10px] text-zinc-500 border-b border-white/5 pb-1 mb-2 font-display font-bold uppercase tracking-wider">
                         <Info size={12} className="text-[#f0c040]" />
                         <span>Game Logic Rules Matrix</span>
                       </div>
@@ -871,7 +910,7 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
                     <button
                       onClick={handleConfirmNextResult}
                       disabled={selectedNextResult === null}
-                      className={`flex-1 py-3 text-center font-syne text-xs uppercase font-extrabold tracking-widest rounded-xl transition cursor-pointer active:scale-98 ${selectedNextResult !== null ? 'bg-gradient-to-r from-[#f0c040] to-yellow-500 text-black font-black shadow-lg shadow-yellow-600/25' : 'bg-white/5 text-slate-500 border border-slate-800'}`}
+                      className={`flex-1 py-3 text-center font-display text-xs uppercase font-bold tracking-widest rounded-xl transition cursor-pointer active:scale-98 ${selectedNextResult !== null ? 'bg-gradient-to-r from-[#f0c040] to-yellow-500 text-black font-black shadow-lg shadow-yellow-600/25' : 'bg-white/5 text-slate-500 border border-slate-800'}`}
                     >
                       Confirm Next Result {selectedNextResult !== null ? `(Enforce: ${selectedNextResult})` : ''}
                     </button>
@@ -883,7 +922,7 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
               <div className="bg-[#12121e] border border-[#f0c040]/10 rounded-2xl p-6">
                 <div className="flex justify-between items-center mb-4">
                   <div>
-                    <h4 className="text-sm font-syne font-extrabold text-white uppercase tracking-wider">Historial Draw Results Ledger (Last 10 Rounds)</h4>
+                    <h4 className="text-sm font-display font-bold text-white uppercase tracking-wider">Historial Draw Results Ledger (Last 10 Rounds)</h4>
                     <p className="text-[11px] text-slate-400">Verification archive showing historical payout logs and total aggregated bets.</p>
                   </div>
                 </div>
@@ -891,7 +930,7 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs text-left">
                     <thead>
-                      <tr className="border-b border-slate-800 text-[10px] uppercase font-syne text-slate-400 font-black tracking-widest bg-[#0a0a0f]/50">
+                      <tr className="border-b border-slate-800 text-[10px] uppercase font-display text-slate-400 font-black tracking-widest bg-[#0a0a0f]/50">
                         <th className="p-3">Period Sequence ID</th>
                         <th className="p-3">Winner Number</th>
                         <th className="p-3">Winner Color Mapped</th>
@@ -901,8 +940,8 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
                       </tr>
                     </thead>
                     <tbody className="font-dmmono text-slate-300">
-                      {draws.map((dr, index) => (
-                        <tr key={dr.period} className={`border-b border-slate-800/50 hover:bg-white/5 transition ${index === 0 ? 'bg-gradient-to-r from-[#f0c040]/5 to-transparent' : ''}`}>
+                      {activeDraws.slice(0,10).map((dr: any, index: number) => (
+                        <tr key={`${dr.period}-${index}`} className={`border-b border-slate-800/50 hover:bg-white/5 transition ${index === 0 ? 'bg-gradient-to-r from-[#f0c040]/5 to-transparent' : ''}`}>
                           <td className="p-3 font-bold text-amber-500">{dr.period}</td>
                           <td className="p-3">
                             <span className={`inline-block w-7 h-7 rounded-full text-center leading-7 font-black text-white bg-gradient-to-tr ${getNumberColorGradient(dr.number)}`}>
@@ -915,8 +954,8 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
                               {dr.size}
                             </span>
                           </td>
-                          <td className="p-3 text-slate-400">₹{dr.totalBets.toLocaleString()}</td>
-                          <td className="p-3 text-right text-[#f0c040] font-bold">₹{dr.payout.toLocaleString()}</td>
+                          <td className="p-3 text-slate-400">₹{(dr.totalBets || 0).toLocaleString()}</td>
+                          <td className="p-3 text-right text-[#f0c040] font-bold">₹{(dr.payout || 0).toLocaleString()}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -933,7 +972,7 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
               {/* Header block */}
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                 <div>
-                  <h2 className="text-xl md:text-2xl font-syne font-extrabold text-[#f0c040] uppercase tracking-wider">Deposit & Withdrawal Queue Desk</h2>
+                  <h2 className="text-lg md:text-xl font-display font-bold text-[#f0c040] uppercase tracking-wider">Deposit & Withdrawal Queue Desk</h2>
                   <p className="text-xs text-slate-400 mt-1">Pending payments approval controller ledger with fast status updates updates.</p>
                 </div>
                 
@@ -943,7 +982,7 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
                     <button
                       key={opt}
                       onClick={() => setTxFilter(opt as any)}
-                      className={`px-3 py-1.5 text-[10px] font-syne font-black uppercase tracking-wider rounded-lg transition-all duration-200 cursor-pointer ${txFilter === opt ? 'bg-[#f0c040] text-black' : 'text-slate-400 hover:text-white'}`}
+                      className={`px-3 py-1.5 text-[10px] font-display font-black uppercase tracking-wider rounded-lg transition-all duration-200 cursor-pointer ${txFilter === opt ? 'bg-[#f0c040] text-black' : 'text-slate-400 hover:text-white'}`}
                     >
                       {opt}
                     </button>
@@ -960,7 +999,7 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
                 ].map((st, idx) => (
                   <div key={idx} className={`border ${st.bg} rounded-2xl p-5 flex items-center justify-between`}>
                     <div>
-                      <span className="block text-[9px] tracking-widest font-syne font-black uppercase text-slate-400">{st.label}</span>
+                      <span className="block text-[9px] tracking-widest font-display font-black uppercase text-slate-400">{st.label}</span>
                       <span className={`text-2xl font-dmmono font-black mt-2 inline-block ${st.txt}`}>{st.val} Records</span>
                     </div>
                     <div className={`p-2 rounded-xl bg-white/5`}>
@@ -975,7 +1014,7 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs text-left">
                     <thead>
-                      <tr className="border-b border-slate-800 text-[10px] uppercase font-syne text-slate-400 font-extrabold tracking-widest bg-[#0a0a0f]/50">
+                      <tr className="border-b border-slate-800 text-[10px] uppercase font-display text-slate-400 font-bold tracking-widest bg-[#0a0a0f]/50">
                         <th className="p-3">User Details</th>
                         <th className="p-3">Payment Model</th>
                         <th className="p-3">Transaction Figures</th>
@@ -1003,7 +1042,7 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
                               </span>
                             </td>
                             <td className="p-3 font-black text-slate-100 text-sm">
-                              ₹{tx.amount.toLocaleString()}
+                              ₹{(tx.amount || 0).toLocaleString()}
                             </td>
                             <td className="p-3 text-[#f0c040] select-all font-bold tracking-wider">{tx.upiOrRef}</td>
                             <td className="p-3 text-slate-400">{tx.time}</td>
@@ -1049,7 +1088,7 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
               {/* Header block */}
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                 <div>
-                  <h2 className="text-xl md:text-2xl font-syne font-extrabold text-[#f0c040] uppercase tracking-wider">User Management Directory</h2>
+                  <h2 className="text-lg md:text-xl font-display font-bold text-[#f0c040] uppercase tracking-wider">User Management Directory</h2>
                   <p className="text-xs text-slate-400 mt-1">Audit active profiles, modify custom player wallet assets or issue bans.</p>
                 </div>
                 
@@ -1072,12 +1111,12 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
                 {[
                   { label: 'Total Registered Players', val: users.length, icon: <Users size={16} className="text-amber-500" /> },
-                  { label: 'Aggregated Live Balances Potential', val: `₹${cumulativeBalances.toLocaleString()}`, icon: <Wallet size={16} className="text-emerald-500" /> },
+                  { label: 'Aggregated Live Balances Potential', val: `₹${(cumulativeBalances || 0).toLocaleString()}`, icon: <Wallet size={16} className="text-emerald-500" /> },
                   { label: 'Banned Accounts Restricted', val: bannedUsersCount, icon: <ShieldAlert size={16} className="text-rose-500" /> }
                 ].map((usStat, index) => (
                   <div key={index} className="bg-[#12121e] border border-[#f0c040]/10 rounded-2xl p-5 flex items-center justify-between">
                     <div>
-                      <span className="block text-[9px] tracking-widest font-syne font-black uppercase text-slate-400">{usStat.label}</span>
+                      <span className="block text-[9px] tracking-widest font-display font-black uppercase text-slate-400">{usStat.label}</span>
                       <span className="text-2xl font-dmmono font-black mt-1.5 inline-block text-[#f0c040]">{usStat.val}</span>
                     </div>
                     <div className="p-2 bg-white/5 border border-white/10 rounded-xl">
@@ -1092,7 +1131,7 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs text-left">
                     <thead>
-                      <tr className="border-b border-slate-800 text-[10px] uppercase font-syne text-slate-400 font-extrabold tracking-widest bg-[#0a0a0f]/50">
+                      <tr className="border-b border-slate-800 text-[10px] uppercase font-display text-slate-400 font-bold tracking-widest bg-[#0a0a0f]/50">
                         <th className="p-3">Player ID</th>
                         <th className="p-3">Display Name</th>
                         <th className="p-3">Phone Line</th>
@@ -1113,7 +1152,7 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
                             <td className="p-3 font-semibold text-amber-500">{u.id}</td>
                             <td className="p-3 font-sans font-bold text-white text-sm">{u.name}</td>
                             <td className="p-3 text-slate-400">{u.phone}</td>
-                            <td className="p-3 font-bold text-slate-100">₹{u.balance.toLocaleString()}</td>
+                            <td className="p-3 font-bold text-slate-100">₹{(u.balance || 0).toLocaleString()}</td>
                             <td className="p-3 text-slate-400 text-[10px]">{u.joinedDate}</td>
                             <td className="p-3">
                               <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${u.isBanned ? 'bg-rose-500/10 text-rose-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
@@ -1153,7 +1192,7 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
               
               {/* Header block */}
               <div>
-                <h2 className="text-xl md:text-2xl font-syne font-extrabold text-[#f0c040] uppercase tracking-wider">Gift Code Generation Cabinet</h2>
+                <h2 className="text-lg md:text-xl font-display font-bold text-[#f0c040] uppercase tracking-wider">Gift Code Generation Cabinet</h2>
                 <p className="text-xs text-slate-400 mt-1">Formulate exclusive credit-multiplier claim codes for event marketing vouchers.</p>
               </div>
 
@@ -1161,12 +1200,12 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
                 
                 {/* Generation form panel */}
                 <div className="lg:col-span-5 bg-[#12121e] border border-[#f0c040]/10 rounded-2xl p-6">
-                  <h3 className="text-sm font-syne font-extrabold text-white uppercase tracking-wider mb-4 border-b border-slate-800 pb-3 flex items-center gap-2">
+                  <h3 className="text-sm font-display font-bold text-white uppercase tracking-wider mb-4 border-b border-slate-800 pb-3 flex items-center gap-2">
                     <Award size={16} className="text-[#f0c040]" />
                     Voucher Parameters
                   </h3>
 
-                  <div className="space-y-4 font-syne">
+                  <div className="space-y-4 font-display">
                     <div>
                       <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Rupee Amount (₹ Value)</label>
                       <input
@@ -1210,7 +1249,7 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
                 {/* Display newly generated code block panel */}
                 <div className="lg:col-span-7 bg-[#12121e] border border-[#f0c040]/10 rounded-2xl p-6 flex flex-col justify-between">
                   <div>
-                    <h3 className="text-sm font-syne font-extrabold text-white uppercase tracking-wider mb-3">Live Voucher Code Output</h3>
+                    <h3 className="text-sm font-display font-bold text-white uppercase tracking-wider mb-3">Live Voucher Code Output</h3>
                     <p className="text-[11px] text-slate-400 mb-4 leading-relaxed">Ensure generated claim keys are copied correctly. Distribute code string securely to active player circles.</p>
                     
                     {latestGeneratedCode ? (
@@ -1222,7 +1261,7 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
                           <button
                             type="button"
                             onClick={() => handleCopyToClipboard(latestGeneratedCode)}
-                            className="py-2 px-5 bg-[#f0c040] text-black font-bold font-syne text-[10px] uppercase tracking-wider rounded-lg flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition"
+                            className="py-2 px-5 bg-[#f0c040] text-black font-bold font-display text-[10px] uppercase tracking-wider rounded-lg flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition"
                           >
                             <Copy size={12} /> Copy Code
                           </button>
@@ -1245,11 +1284,11 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
 
               {/* Code database overview directory table */}
               <div className="bg-[#12121e] border border-[#f0c040]/10 rounded-2xl p-6">
-                <h4 className="text-xs font-syne font-extrabold uppercase text-slate-300 tracking-wider mb-4">Active System codes ledger</h4>
+                <h4 className="text-xs font-display font-bold uppercase text-slate-300 tracking-wider mb-4">Active System codes ledger</h4>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs text-left">
                     <thead>
-                      <tr className="border-b border-slate-800 text-[10px] uppercase font-syne text-slate-400 font-extrabold tracking-widest bg-[#0a0a0f]/50">
+                      <tr className="border-b border-slate-800 text-[10px] uppercase font-display text-slate-400 font-bold tracking-widest bg-[#0a0a0f]/50">
                         <th className="p-3">Promotion Code Key</th>
                         <th className="p-3">Claim Credit value</th>
                         <th className="p-3">Distribution Used / Limit Ratio</th>
@@ -1299,115 +1338,127 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
               
               {/* Header block */}
               <div>
-                <h2 className="text-xl md:text-2xl font-syne font-extrabold text-[#f0c040] uppercase tracking-wider">UPI merchant Gateway settings</h2>
-                <p className="text-xs text-slate-400 mt-1">Configure active Merchant UPI payments address and upload official QR images shown to clients.</p>
+                <h2 className="text-lg md:text-xl font-display font-bold text-[#f0c040] uppercase tracking-wider">UPI Management</h2>
+                <p className="text-xs text-slate-400 mt-1">Configure and manage UPI IDs for deposit gateways</p>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              <div className="bg-[#12121e] border border-[#f0c040]/10 rounded-2xl p-6">
                 
-                {/* Configuration form block */}
-                <form onSubmit={handleSaveQrConfig} className="lg:col-span-7 bg-[#12121e] border border-[#f0c040]/10 rounded-2xl p-6 space-y-6">
-                  <h3 className="text-sm font-syne font-extrabold text-white uppercase tracking-wider mb-2 border-b border-slate-800 pb-3 flex items-center gap-2">
-                    <QrCode size={16} className="text-[#f0c040]" />
-                    UPI Endpoint Parameter
-                  </h3>
-
-                  <div className="space-y-4 font-syne">
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase tracking-widest text-[#f0c040] mb-1.5">UPI/VPA Address (Merchant endpoint)*</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. securepay@gpay"
-                        value={editUpiId}
-                        onChange={(e) => setEditUpiId(e.target.value)}
-                        className="w-full bg-[#0a0a0f] border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-100 outline-none font-dmmono focus:border-[#f0c040]"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Merchant Account Name*</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. S.K. TRADING CORP"
-                        value={editUpiName}
-                        onChange={(e) => setEditUpiName(e.target.value)}
-                        className="w-full bg-[#0a0a0f] border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-100 outline-none focus:border-[#f0c040]"
-                        required
-                      />
-                    </div>
-
-                    {/* QR Image Selection Box drag and drop */}
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Drag/Upload QR Payment Image</label>
-                      <div className="border-2 border-dashed border-slate-800 hover:border-[#f0c040]/50 rounded-2xl p-6 bg-[#0a0a0f] transition text-center space-y-2 relative">
-                        <Upload size={24} className="text-[#f0c040] mx-auto opacity-75" />
-                        <div className="text-xs text-slate-400">
-                          <span className="font-extrabold text-amber-500 hover:underline cursor-pointer">Click here to choose file</span> or drag image here
-                        </div>
-                        <span className="block text-[9px] text-slate-600">Supports JPEG, JPG or PNG formats only</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleQrImageUpload}
-                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Hindi warning notice box */}
-                  <div className="bg-amber-950/20 border border-amber-500/20 p-4 rounded-xl flex gap-3">
-                    <AlertTriangle size={18} className="text-amber-500 shrink-0 mt-0.5 animate-bounce" />
-                    <div>
-                      <span className="block text-amber-400 text-xs font-bold font-syne uppercase tracking-wider">High Risk warning directive!</span>
-                      <p className="text-[11px] text-slate-400 font-sans leading-relaxed mt-1">
-                        "QR save karne ke baad turat live ho jayega" - Merchant credentials synchronized in state will immediately reflect visually across active checking-out simulated user devices client-side. Protect transaction VPA addresses accurately.
-                      </p>
-                    </div>
-                  </div>
-
+                {/* Add UPI Form */}
+                <form onSubmit={handleAddUpi} className="flex flex-col sm:flex-row gap-3 mb-8">
+                  <input
+                    type="text"
+                    placeholder="Add an UPI ID"
+                    value={newUpiId}
+                    onChange={(e) => setNewUpiId(e.target.value)}
+                    className="flex-1 max-w-sm bg-[#0a0a0f] border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-100 outline-none font-dmmono focus:border-[#f0c040]"
+                    required
+                  />
                   <button
                     type="submit"
-                    className="w-full py-3.5 bg-[#f0c040] hover:bg-yellow-500 text-black font-black font-syne text-xs uppercase tracking-widest rounded-xl transition shadow-lg shadow-yellow-600/20 active:scale-95 cursor-pointer"
+                    className="px-8 py-3 bg-[#1e1b4b] hover:bg-[#2e2b6b] text-white font-bold font-display text-xs uppercase tracking-widest rounded-xl transition shadow-lg active:scale-95"
                   >
-                    Confirm & Save UPI Configuration
+                    Add
                   </button>
                 </form>
 
-                {/* Preview window panel on right */}
-                <div className="lg:col-span-5 bg-[#12121e] border border-[#f0c040]/10 rounded-2xl p-6 flex flex-col justify-between">
-                  <div>
-                    <h3 className="text-sm font-syne font-extrabold text-white uppercase tracking-wider mb-4">Client Checkout Preview Live</h3>
-                    
-                    <div className="bg-[#0a0a0f] rounded-2xl p-5 border border-slate-800 text-center space-y-5">
-                      <span className="text-[9px] tracking-widest uppercase font-black text-slate-500 block">Scan QR Code To Pay</span>
-                      
-                      {/* Interactive preview image from file upload */}
-                      <div className="aspect-square max-w-[200px] bg-[#12121e] border-2 border-slate-800 rounded-2xl p-3 mx-auto flex items-center justify-center">
-                        {qrUploadPreview || upiQr.qrDataUrl ? (
-                          <img 
-                            src={qrUploadPreview || upiQr.qrDataUrl} 
-                            alt="Preview merchant QR Code" 
-                            className="w-full h-full object-contain rounded-lg"
-                            referrerPolicy="no-referrer"
-                          />
-                        ) : (
-                          <QrCode size={40} className="text-slate-600 animate-pulse" />
-                        )}
-                      </div>
-
-                      <div className="space-y-1 text-center font-mono text-xs">
-                        <div className="text-slate-300 font-sans font-bold uppercase">{editUpiName || upiQr.accountName}</div>
-                        <div className="text-slate-500 text-[11px] select-all">{editUpiId || upiQr.upiId}</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 pt-4 border-t border-slate-800 text-slate-500 font-syne text-[10px] leading-relaxed">
-                    Client applications dynamically generate deep UPI links mapping payment configurations saved above to automate quick mobile wallets payments flows.
-                  </div>
+                {/* Data Table */}
+                <div className="overflow-x-auto border border-slate-800 rounded-xl">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="bg-[#0a0a0f] text-slate-400 font-display text-[10px] uppercase tracking-widest">
+                        <th className="px-4 py-3 font-bold border-b border-slate-800 w-[80px] text-center">Active</th>
+                        <th className="px-4 py-3 font-bold border-b border-slate-800">UPI ID</th>
+                        <th className="px-4 py-3 font-bold border-b border-slate-800 w-[150px]">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {upiQr.list.map((item) => (
+                        <tr key={item.id} className="border-b border-slate-800/50 hover:bg-white/5 transition">
+                          <td className="px-4 py-4 text-center">
+                            <input 
+                              type="radio" 
+                              name="activeUpiId" 
+                              className="w-4 h-4 cursor-pointer accent-[#f0c040]"
+                              checked={upiQr.activeId === item.id}
+                              onChange={() => {
+                                const nextConfig = { ...upiQr, activeId: item.id };
+                                setUpiQr(nextConfig);
+                                syncLocal('wt_admin_qr_config', nextConfig);
+                              }}
+                            />
+                          </td>
+                          <td className="px-4 py-4 text-slate-300 font-mono text-xs">
+                            {editingUpiId === item.id ? (
+                              <input
+                                type="text"
+                                value={editingUpiValue}
+                                onChange={e => setEditingUpiValue(e.target.value)}
+                                className="w-full bg-[#0a0a0f] border border-[#f0c040] rounded px-2 py-1 text-xs text-slate-100 outline-none"
+                                autoFocus
+                              />
+                            ) : (
+                              item.upiId
+                            )}
+                          </td>
+                          <td className="px-4 py-4">
+                            {editingUpiId === item.id ? (
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => saveEditUpi(item.id)}
+                                  className="px-3 py-1 bg-green-600 hover:bg-green-500 text-white rounded text-[10px] font-bold uppercase transition"
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  onClick={() => setEditingUpiId(null)}
+                                  className="px-3 py-1 bg-slate-700 hover:bg-slate-600 text-white rounded text-[10px] font-bold uppercase transition"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => {
+                                    setEditingUpiId(item.id);
+                                    setEditingUpiValue(item.upiId);
+                                  }}
+                                  className="px-3 py-1 bg-[#f0c040] hover:bg-yellow-400 text-black py-1.5 rounded text-[10px] font-bold uppercase transition"
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteUpi(item.id)}
+                                  className="px-3 py-1 bg-red-600 hover:bg-red-500 text-white py-1.5 rounded text-[10px] font-bold uppercase transition"
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                      {upiQr.list.length === 0 && (
+                        <tr>
+                          <td colSpan={3} className="px-4 py-6 text-center text-slate-500 text-xs text-mono">
+                            No UPI IDs registered
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
                 </div>
+
+                <div className="mt-8">
+                  <button
+                    onClick={handleSaveActiveUpi}
+                    className="px-6 py-3.5 bg-[#1e1b4b] hover:bg-[#2e2b6b] text-white font-bold font-display text-xs uppercase tracking-widest rounded-xl transition shadow-lg shadow-black/20 active:scale-95"
+                  >
+                    Save Active UPI
+                  </button>
+                </div>
+
               </div>
             </div>
           )}
@@ -1437,8 +1488,8 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
                 <X size={16} />
               </button>
 
-              <div className="font-syne">
-                <h3 className="text-base font-extrabold text-[#f0c040] uppercase tracking-wider flex items-center gap-2">
+              <div className="font-display">
+                <h3 className="text-base font-bold text-[#f0c040] uppercase tracking-wider flex items-center gap-2">
                   <Pencil size={15} /> Modify Player Wallet & Details
                 </h3>
                 <p className="text-[11px] text-slate-400 mt-0.5">Player ID reference code: {editingUser.id}</p>
@@ -1446,7 +1497,7 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5 font-syne">Registered Name</label>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5 font-display">Registered Name</label>
                   <input
                     type="text"
                     value={editUserName}
@@ -1456,7 +1507,7 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5 font-syne">Direct Wallet Balance (₹)</label>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5 font-display">Direct Wallet Balance (₹)</label>
                   <input
                     type="number"
                     value={editUserBalance}
@@ -1466,7 +1517,7 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
                 </div>
               </div>
 
-              <div className="flex gap-3 font-syne text-xs uppercase tracking-widest font-black pt-2">
+              <div className="flex gap-3 font-display text-xs uppercase tracking-widest font-black pt-2">
                 <button
                   onClick={() => setEditingUser(null)}
                   className="flex-1 py-3 text-center border border-slate-700 text-slate-300 rounded-xl hover:bg-white/5 transition"

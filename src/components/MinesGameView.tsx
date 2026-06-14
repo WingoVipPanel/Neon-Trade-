@@ -1129,7 +1129,7 @@ export default function MinesGameView({
           </button>
 
           <div className="font-mono text-xs font-black text-sky-100 tracking-wide">
-            {balance.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} INR
+            {(balance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} INR
           </div>
 
           <button 

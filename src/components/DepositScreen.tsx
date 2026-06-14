@@ -45,6 +45,8 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
   const [timeLeft, setTimeLeft] = useState(15 * 60);
   const [selectedPayMethod, setSelectedPayMethod] = useState<'paytm' | 'phonepe'>('paytm');
   
+  const [activeUpi, setActiveUpi] = useState('hyysumitx@fam');
+  
   // Real-time deposits history list
   const [depositHistory, setDepositHistory] = useState<any[]>([]);
   
@@ -52,6 +54,20 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
   const historyRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // Attempt to load admin configured active UPI
+    try {
+      const confStr = localStorage.getItem('wt_admin_qr_config');
+      if (confStr) {
+        const conf = JSON.parse(confStr);
+        if (conf?.activeId && conf?.list) {
+          const uItem = conf.list.find((u: any) => u.id === conf.activeId);
+          if (uItem?.upiId) {
+            setActiveUpi(uItem.upiId);
+          }
+        }
+      }
+    } catch (e) {}
+
     const user = auth.currentUser;
     const phone = localStorage.getItem('userPhone');
     const targetUserId = user?.uid || phone;
@@ -311,7 +327,7 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
             <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm text-center">
               <div className="bg-gray-100 p-4 rounded-xl inline-block mb-4 border border-gray-200">
                 <img 
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(`upi://pay?pa=hyysumitx@fam&am=${amount}&cu=INR`)}`}
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(`upi://pay?pa=${activeUpi}&am=${amount}&cu=INR`)}`}
                   alt="Payment QR Code"
                   className="w-[160px] h-[160px]"
                 />
@@ -468,7 +484,7 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
               </button>
             </div>
             <div className="text-[#ffccd1] font-bold text-[18px] mt-1 z-10 relative flex items-center">
-               <span className="text-[14px] mr-1">₹</span>{balance.toLocaleString('en-IN')}
+               <span className="text-[14px] mr-1">₹</span>{(balance || 0).toLocaleString('en-IN')}
             </div>
           </div>
           <div className="flex-1 rounded-[14px] bg-[#3f1618] p-3 text-white border border-white/5 shadow-md relative overflow-hidden">
@@ -476,7 +492,7 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
               Withdrawable
             </div>
             <div className="text-[#ffccd1] font-bold text-[18px] mt-1 z-10 relative flex items-center">
-               <span className="text-[14px] mr-1">₹</span>{balance.toLocaleString('en-IN')}
+               <span className="text-[14px] mr-1">₹</span>{(balance || 0).toLocaleString('en-IN')}
             </div>
           </div>
         </div>
@@ -521,7 +537,7 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
                   background: isSelected ? 'linear-gradient(180deg, #ff5b61 0%, #d42a2d 100%)' : undefined
                 }}
               >
-                <div className="font-semibold text-[13px]">₹{item.amount.toLocaleString('en-IN')}</div>
+                <div className="font-semibold text-[13px]">₹{(item.amount || 0).toLocaleString('en-IN')}</div>
                 
                 {/* Bonus Badge */}
                 <div className={`absolute -top-1.5 -right-1 text-[9px] font-bold px-1 rounded-sm leading-[12px] z-10 ${

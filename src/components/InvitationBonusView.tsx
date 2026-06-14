@@ -183,7 +183,7 @@ export default function InvitationBonusView({
                   </div>
                 </div>
                 <div className="pr-4">
-                  <span className="text-[#ffd275] font-black text-lg">₹{tier.reward.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <span className="text-[#ffd275] font-black text-lg">₹{(tier.reward || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
               </div>
 
@@ -196,7 +196,7 @@ export default function InvitationBonusView({
                   </div>
                   <div className="flex justify-between p-3">
                     <span className="text-white/50 font-bold uppercase tracking-wider text-[10px]">{selectedLang === 'en' ? 'Requirement: Min Recharge' : 'आवश्यकता: न्यूनतम रिचार्ज'}</span>
-                    <span className="text-[#df1c1c] font-black text-sm">₹{tier.recharge.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span className="text-[#df1c1c] font-black text-sm">₹{(tier.recharge || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                 </div>
               </div>

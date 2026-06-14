@@ -4,7 +4,7 @@ import { createServer as createViteServer } from "vite";
 import http from "http";
 import { Server } from "socket.io";
 import { initializeApp } from 'firebase/app';
-import { getFirestore, doc, setDoc, getDocs, collection, query, orderBy, limit, serverTimestamp } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, getDocs, getDoc, collection, query, orderBy, limit, serverTimestamp } from 'firebase/firestore';
 import firebaseConfig from './firebase-applet-config.json';
 
 let db: any = null;
@@ -125,38 +125,24 @@ async function startServer() {
   if (db) {
     try {
         console.log("Fetching drawing history from Firestore...");
-        // Fetch all recent records and filter in memory to avoid complex index requirements on boot
-        const q = query(
-          collection(db, 'wingo_history'),
-          orderBy('serverTimestamp', 'desc'),
-          limit(4000)
-        );
-        const snap = await getDocs(q);
-            
-        console.log(`Firestore returned ${snap.docs.length} total records.`);
-        
-        const allFetched: Record<Room, WingoHistoryRecord[]> = { '30s': [], '1m': [], '3m': [], '5m': [] };
-        
-        for (const doc of snap.docs) {
-            const data = doc.data();
-            const r = data.room as Room;
-            if (ROOMS.includes(r) && allFetched[r].length < 500) {
-                allFetched[r].push({
-                    period: data.period,
-                    number: data.number,
-                    color: data.color,
-                    size: data.size
-                });
+        try {
+            for (const room of ROOMS) {
+                 try {
+                     const docObj = await getDoc(doc(db, 'globalResults', room));
+                     if (docObj.exists()) {
+                         const data = docObj.data();
+                         roomData[room].history = data.history || [];
+                         if (roomData[room].history.length > 0) {
+                             roomData[room].lastPeriod = roomData[room].history[0].period;
+                         }
+                         console.log(`Room [${room}]: Loaded ${roomData[room].history.length} records. Latest period: ${roomData[room].lastPeriod || "None"}`);
+                     }
+                 } catch (err: any) {
+                     console.error(`Query failed for room ${room}:`, err.message);
+                 }
             }
-        }
-        
-        for (const room of ROOMS) {
-            // Firestore data is newest first, so we just set it
-            roomData[room].history = allFetched[room];
-            if (roomData[room].history.length > 0) {
-                roomData[room].lastPeriod = roomData[room].history[0].period;
-            }
-            console.log(`Room [${room}]: Loaded ${roomData[room].history.length} records. Latest period: ${roomData[room].lastPeriod || "None"}`);
+        } catch (e: any) {
+            console.error("Query failed for globalResults", e.message);
         }
     } catch (e) {
         console.error("Failed to load history from Firestore during boot:", e);
@@ -188,10 +174,13 @@ async function startServer() {
     });
   });
 
+// ... existing code
   const broadcastResult = (room: Room, result: WingoHistoryRecord) => {
     io.emit('new_result', { room, result });
   };
 
+  const isWriting: Record<Room, boolean> = { '30s': false, '1m': false, '3m': false, '5m': false };
+  const lastSavedTime: Record<Room, number> = { '30s': 0, '1m': 0, '3m': 0, '5m': 0 };
   let lastErrorLogTime = 0;
   const saveResult = async (room: Room, record: WingoHistoryRecord) => {
       // Avoid adding the same period twice
@@ -208,41 +197,79 @@ async function startServer() {
       roomData[room].lastPeriod = roomData[room].history[0].period;
       
       // Persist to Firestore (Async - don't block the loop)
-      if (db) {
-          const docId = `${room}_${record.period}`;
-          setDoc(doc(db, 'wingo_history', docId), {
-              ...record,
-              room,
-              serverTimestamp: serverTimestamp()
+      const now = Date.now();
+      if (db && !isWriting[room] && (now - lastSavedTime[room] > 3600000)) {
+          isWriting[room] = true;
+          lastSavedTime[room] = now;
+          setDoc(doc(db, 'globalResults', room), {
+              history: roomData[room].history,
+              lastUpdated: serverTimestamp()
+          }).then(() => {
+              isWriting[room] = false;
           }).catch((e: any) => {
-              const now = Date.now();
+              isWriting[room] = false;
               if (now - lastErrorLogTime > 600000) {
-                  console.error(`Firestore Persistence Error (room=${room}, period=${record.period}):`, e.message);
+                  console.error(`Firestore Persistence Error (room=${room}, doc=globalResults/${room}):`, e.code, e.message);
                   lastErrorLogTime = now;
               }
           });
       }
       broadcastResult(room, record);
   };
+// ... existing code
 
-  const fetchRoomData = async (room: Room) => {
+  const fetchRoomData = async (room: Room, fetchAll: boolean = false) => {
     try {
-      const res = await fetch(urlMap[room], { signal: AbortSignal.timeout(10000) });
-      if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
-      const d = await res.json();
-      const list = d?.data?.list || [];
-      if (list.length > 0) {
-        console.log(`API Fetch Success [${room}]: Received ${list.length} records. Latest Issue: ${list[0].issueNumber}`);
+      const urlBase = urlMap[room].split('?')[0]; // Remove existing pageSize query params
+      
+      let allRecords: any[] = [];
+      
+      if (fetchAll) {
+          console.log(`[${room}] Fetching full 50 pages (500 records) from API...`);
+          // Fetch up to 50 pages sequentially to populate initial history
+          for (let page = 1; page <= 50; page++) {
+             try {
+                const res = await fetch(`${urlBase}?pageNo=${page}&pageSize=10`, { signal: AbortSignal.timeout(5000) });
+                if (!res.ok) {
+                   console.log(`[${room}] HTTP Error on page ${page}: ${res.status}`);
+                   break;
+                }
+                const d = await res.json();
+                const list = d?.data?.list || [];
+                if (list.length === 0) break;
+                allRecords = [...allRecords, ...list];
+                if (allRecords.length >= 500) break;
+             } catch (e) {
+                console.log(`[${room}] Fetch error at page ${page}:`, e);
+                break; // stop fetching if we encounter an error to avoid spamming
+             }
+          }
+      } else {
+          // Just fetch page 1 for polling
+          const res = await fetch(`${urlBase}?pageNo=1&pageSize=10`, { signal: AbortSignal.timeout(10000) });
+          if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+          const d = await res.json();
+          allRecords = d?.data?.list || [];
+      }
+      
+      if (allRecords.length > 0) {
+        if (!fetchAll && allRecords[0]) {
+             // For periodic polling we don't spam the console too much
+        } else {
+             console.log(`API Fetch Success [${room}]: Received ${allRecords.length} records. Latest Issue: ${allRecords[0]?.issueNumber}`);
+        }
+
         // Iterate in reverse to save older records first if they are new to us
         const newRecords: WingoHistoryRecord[] = [];
-        for (let i = list.length - 1; i >= 0; i--) {
-          const item = list[i];
+        for (let i = allRecords.length - 1; i >= 0; i--) {
+          const item = allRecords[i];
           const num = parseInt(item.number);
           const period = item.issueNumber;
           
           // Check if this period is already in our history
-          const exists = roomData[room].history.some(h => h.period === period);
-          if (!exists) {
+          const existsInHistory = roomData[room].history.some(h => h.period === period);
+          const existsInNew = newRecords.some(r => r.period === period);
+          if (!existsInHistory && !existsInNew) {
               const record: WingoHistoryRecord = {
                 period: period,
                 number: num,
@@ -254,12 +281,56 @@ async function startServer() {
         }
 
         // Process records
-        for (const record of newRecords) {
-           saveResult(room, record);
+        if (newRecords.length > 0) {
+            if (newRecords.length === 1) {
+                // Single update logic (normal polling)
+                saveResult(room, newRecords[0]);
+            } else {
+                // Bulk update logic (initial load of 500 records)
+                console.log(`[${room}] Bulk adding ${newRecords.length} records...`);
+                
+                const latestNew = [...newRecords].reverse(); // newest first
+                const combined = [...latestNew, ...roomData[room].history];
+                
+                // Deduplicate based on period
+                const uniqueMap = new Map();
+                for (const item of combined) {
+                    if (!uniqueMap.has(item.period)) {
+                        uniqueMap.set(item.period, item);
+                    }
+                }
+                
+                roomData[room].history = Array.from(uniqueMap.values())
+                    .sort((a, b) => b.period.localeCompare(a.period))
+                    .slice(0, 500);
+// ... existing code
+                roomData[room].lastPeriod = roomData[room].history[0].period;
+
+                const now = Date.now();
+                if (db && !isWriting[room] && (now - lastSavedTime[room] > 3600000)) {
+                     isWriting[room] = true;
+                     lastSavedTime[room] = now;
+                     setDoc(doc(db, 'globalResults', room), {
+                         history: roomData[room].history,
+                         lastUpdated: serverTimestamp()
+                     }).then(() => {
+                         isWriting[room] = false;
+                     }).catch(e => {
+                         isWriting[room] = false;
+                         console.error(`Bulk write failed for ${room}:`, e);
+                     });
+                }
+
+                // In bulk mode, we might just broadcast the most recent record or none
+// ... existing code
+                broadcastResult(room, latestNew[0]);
+            }
         }
       }
     } catch (e: any) {
-      console.error(`Failed to fetch ${room}: ${e.message}`);
+      if (fetchAll) {
+          console.error(`Failed full fetch ${room}: ${e.message}`);
+      }
     }
   };
 
@@ -304,7 +375,9 @@ async function startServer() {
   });
 
   // initial fetch
-  ROOMS.forEach(r => fetchRoomData(r));
+  ROOMS.forEach(r => {
+      fetchRoomData(r, roomData[r].history.length < 500);
+  });
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {

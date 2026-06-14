@@ -1,1138 +1,701 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  ChevronLeft, 
-  Headset, 
-  History, 
-  Check, 
-  RefreshCw, 
-  Plus, 
-  CreditCard, 
-  Send, 
-  Search, 
-  HelpCircle, 
-  CheckCircle2, 
-  Sparkles, 
-  Wallet, 
-  ShieldCheck, 
-  Coins,
-  Copy
-} from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { ChevronLeft, RefreshCw, Copy, X, Wallet, CreditCard, ScanLine, Landmark, ChevronRight, FileText, MessageCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { doc, updateDoc, serverTimestamp, getDoc, setDoc } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
+import { doc, serverTimestamp, addDoc, collection, getDoc, query, where, orderBy, onSnapshot, updateDoc } from 'firebase/firestore';
 import SupportChat from './SupportChat';
 
 interface WithdrawScreenProps {
   onClose: () => void;
   balance: number;
   onRefresh: () => void;
-  selectedLang: string;
   onAddNotification?: (notif: { titleEn: string, titleHi: string, contentEn: string, contentHi: string, type: string }) => void;
+  selectedLang?: 'en' | 'hi';
 }
 
-const INDIAN_BANKS = [
-  // PUBLIC SECTOR
-  "State Bank of India (SBI)",
-  "Punjab National Bank (PNB)",
-  "Bank of Baroda",
-  "Canara Bank",
-  "Union Bank of India",
-  "Bank of India",
-  "Indian Bank",
-  "Central Bank of India",
-  "Indian Overseas Bank",
-  "UCO Bank",
-  "Bank of Maharashtra",
-  "Punjab & Sind Bank",
-  // PRIVATE SECTOR
-  "HDFC Bank Ltd.",
-  "ICICI Bank Ltd.",
-  "Axis Bank Ltd.",
-  "Kotak Mahindra Bank Ltd.",
-  "IndusInd Bank Ltd.",
-  "YES Bank Ltd.",
-  "IDFC First Bank Ltd.",
-  "Federal Bank Ltd.",
-  "South Indian Bank Ltd.",
-  "Bandhan Bank Ltd.",
-  "Jammu & Kashmir Bank Ltd.",
-  "Karnataka Bank Ltd.",
-  "Karur Vysya Bank Ltd.",
-  "RBL Bank Ltd.",
-  "CSB Bank Ltd.",
-  "City Union Bank Ltd.",
-  "DCB Bank Ltd.",
-  "Dhanlaxmi Bank Ltd.",
-  "IDBI Bank Ltd.",
-  "Nainital Bank Ltd.",
-  "Tamilnad Mercantile Bank Ltd.",
-  // SMALL FINANCE
-  "AU Small Finance Bank",
-  "Capital Small Finance Bank",
-  "Equitas Small Finance Bank",
-  "ESAF Small Finance Bank",
-  "Fincare Small Finance Bank",
-  "Jana Small Finance Bank",
-  "North East Small Finance Bank",
-  "Shivalik Small Finance Bank",
-  "Suryoday Small Finance Bank",
-  "Unity Small Finance Bank",
-  "Utkarsh Small Finance Bank",
-  // PAYMENTS BANKS
-  "Airtel Payments Bank",
-  "India Post Payments Bank (IPPB)",
-  "Fino Payments Bank",
-  "Jio Payments Bank",
-  "NSDL Payments Bank",
-  // FOREIGN BANKS
-  "Standard Chartered Bank",
-  "HSBC Bank",
-  "Citibank",
-  "DBS Bank",
-  "Deutsche Bank",
-  "Barclays Bank",
-  "BNP Paribas"
-];
+export default function WithdrawScreen({ onClose, balance, onRefresh, onAddNotification, selectedLang = 'en' }: WithdrawScreenProps) {
+  const [amount, setAmount] = useState<string>('');
+  const [error, setError] = useState<string>('');
+  const [showChat, setShowChat] = useState(false);
+  const [showBindModal, setShowBindModal] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState<'UPI' | 'Bank'>('UPI');
+  const [showToast, setShowToast] = useState(false);
 
-interface SavedBankDetails {
-  bankName: string;
-  accountNumber: string;
-  holderName: string;
-  ifsc: string;
-  email: string;
-  phone: string;
-}
+  // Real-time withdrawals history list
+  const [withdrawHistory, setWithdrawHistory] = useState<any[]>([]);
 
-interface SavedUpiDetails {
-  upiId: string;
-  holderName: string;
-  phone: string;
-}
+  // Ref for scrolling down to history section
+  const historyRef = useRef<HTMLDivElement>(null);
 
-interface WithdrawalRecord {
-  id: string;
-  amount: number;
-  method: 'BankCard' | 'UPI';
-  accountDetails: string;
-  status: 'Pending' | 'Success' | 'Failed';
-  time: string;
-  remarks?: string;
-}
-
-export default function WithdrawScreen({ onClose, balance, onRefresh, selectedLang, onAddNotification }: WithdrawScreenProps) {
-  const isEn = selectedLang === 'en';
-
-  const [withdrawAmount, setWithdrawAmount] = useState<string>('');
-  const [paymentMethod, setPaymentMethod] = useState<'BankCard' | 'UPI' | 'USDT'>('UPI');
-  
-  // Modals / Overlays
-  const [showAddBankModal, setShowAddBankModal] = useState(false);
-  const [showAddUpiModal, setShowAddUpiModal] = useState(false);
-  const [showHistoryModal, setShowHistoryModal] = useState(false);
-  const [showSupportChat, setShowSupportChat] = useState(false);
-  const [activeTab, setActiveTab] = useState<'Withdraw' | 'History'>('Withdraw');
-  
-  // Bank search states
-  const [bankSearchQuery, setBankSearchQuery] = useState('');
-  const [showBankDropdown, setShowBankDropdown] = useState(false);
-
-  // Form states for Bank
-  const [bankName, setBankName] = useState('');
-  const [accountNumber, setAccountNumber] = useState('');
-  const [holderName, setHolderName] = useState('');
-  const [ifsc, setIfsc] = useState('');
-  const [bankEmail, setBankEmail] = useState('');
-  const [bankPhone, setBankPhone] = useState('');
-  const [bankError, setBankError] = useState('');
-
-  // Form states for UPI
-  const [upiId, setUpiId] = useState('');
-  const [upiHolderName, setUpiHolderName] = useState('');
-  const [upiPhone, setUpiPhone] = useState('');
-  const [upiError, setUpiError] = useState('');
-
-  // Persisted Account states
-  const [savedBank, setSavedBank] = useState<SavedBankDetails | null>(null);
-  const [savedUpi, setSavedUpi] = useState<SavedUpiDetails | null>(null);
-
-  // General errors
-  const [errors, setErrors] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [showSuccessToast, setShowSuccessToast] = useState(false);
-  const [successAmount, setSuccessAmount] = useState(0);
-
-  // Generate user-specific storage keys
-  const currentUser = auth.currentUser;
-  const userIdentifier = currentUser ? currentUser.uid : (localStorage.getItem('userPhone') || 'guest');
-  const bankStorageKey = `saved_withdrawal_bank_${userIdentifier}`;
-  const upiStorageKey = `saved_withdrawal_upi_${userIdentifier}`;
-  const historyStorageKey = `withdrawal_history_records_${userIdentifier}`;
-  const dailyCountStorageKey = `withdrawal_daily_count_${userIdentifier}_${new Date().toISOString().split('T')[0]}`;
-
-  const [dailyRemainingCount, setDailyRemainingCount] = useState<number>(() => {
-    const count = localStorage.getItem(dailyCountStorageKey);
-    return count ? 3 - parseInt(count) : 3;
-  });
-
-  // Load saved details
   useEffect(() => {
-    const bankData = localStorage.getItem(bankStorageKey);
-    const upiData = localStorage.getItem(upiStorageKey);
-    if (bankData) {
-      try { setSavedBank(JSON.parse(bankData)); } catch(e) {}
+    const user = auth.currentUser;
+    if (user) {
+      const unsub = onSnapshot(doc(db, 'users', user.uid), (doc) => {
+        if (doc.exists()) {
+          setPaymentMethod(doc.data().paymentMethod || null);
+        }
+      });
+      return () => unsub();
     }
-    if (upiData) {
-      try { setSavedUpi(JSON.parse(upiData)); } catch(e) {}
+  }, []);
+
+  useEffect(() => {
+    const user = auth.currentUser;
+    const phone = localStorage.getItem('userPhone');
+    const targetUserId = user?.uid || phone;
+    if (!targetUserId) return;
+
+    // Fetch user's withdraw requests in real time
+    const q = query(
+      collection(db, 'withdrawRequests'),
+      where('userId', '==', targetUserId),
+      orderBy('createdAt', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const historyList: any[] = [];
+      snapshot.forEach((doc) => {
+        historyList.push({ id: doc.id, ...doc.data() });
+      });
+      setWithdrawHistory(historyList);
+    }, (err) => {
+      console.warn("Error fetching, falling back...", err);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const scrollToHistory = () => {
+    historyRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const handleRefreshClick = () => {
+    onRefresh();
+    setShowToast(true);
+    setTimeout(() => {
+      setShowToast(false);
+    }, 1500);
+  };
+
+  const handleAmountChange = (val: string) => {
+    setAmount(val);
+    const num = parseFloat(val);
+    if (val === '') {
+      setError('');
+    } else if (num < 110) {
+      setError('Min withdrawal is ₹110');
+    } else if (num > balance) {
+      setError('Insufficient balance');
+    } else {
+      setError('');
     }
-  }, [bankStorageKey, upiStorageKey]);
+  };
 
-  const [historyRecords, setHistoryRecords] = useState<WithdrawalRecord[]>(() => {
-    const records = localStorage.getItem(historyStorageKey);
-    return records ? JSON.parse(records) : [];
-  });
-
-  const saveBankDetails = () => {
-    if (!bankName) return setBankError(isEn ? 'Please select a bank' : 'कृपया बैंक चुनें');
-    if (!accountNumber || accountNumber.length < 8) return setBankError(isEn ? 'Please enter valid account number' : 'कृपया मान्य खाता संख्या दर्ज करें');
-    if (!holderName) return setBankError(isEn ? 'Please enter holder name' : 'कृपया खाताधारक का नाम दर्ज करें');
-    if (!ifsc || ifsc.length < 4) return setBankError(isEn ? 'Please enter IFSC code' : 'कृपया सही IFSC कोड दर्ज करें');
+  const handleWithdrawSubmit = async () => {
+    const withdrawNum = parseFloat(amount || '0');
+    if (isNaN(withdrawNum) || withdrawNum < 110 || withdrawNum > balance) {
+        setError('Invalid amount');
+        return;
+    }
+    if (!paymentMethod) {
+       alert("Please bind a payment method first");
+       setShowBindModal(true);
+       return;
+    }
     
-    const details: SavedBankDetails = { bankName, accountNumber, holderName, ifsc, email: bankEmail, phone: bankPhone };
-    localStorage.setItem(bankStorageKey, JSON.stringify(details));
-    setSavedBank(details);
-    setShowAddBankModal(false);
-    setBankError('');
-  };
-
-  const saveUpiDetails = () => {
-    if (!upiId || !upiId.includes('@')) return setUpiError(isEn ? 'Please enter a valid UPI ID' : 'कृपया मान्य UPI ID दर्ज करें');
-    if (!upiHolderName) return setUpiError(isEn ? 'Please enter holder name' : 'कृपया नाम दर्ज करें');
-    
-    const details: SavedUpiDetails = { upiId, holderName: upiHolderName, phone: upiPhone };
-    localStorage.setItem(upiStorageKey, JSON.stringify(details));
-    setSavedUpi(details);
-    setShowAddUpiModal(false);
-    setUpiError('');
-  };
-
-  const handleAllAmount = () => {
-    setWithdrawAmount(balance.toFixed(2));
-  };
-
-  const handleWithdrawAction = async () => {
-    setErrors('');
-    const amt = parseFloat(withdrawAmount);
-    if (isNaN(amt) || amt <= 0) {
-      setErrors(isEn ? 'Enter a valid amount' : 'एक मान्य राशि दर्ज करें');
-      return;
-    }
-    if (amt < 200) {
-      setErrors(isEn ? 'Minimum withdrawal amount is ₹200' : 'न्यूनतम निकासी राशि ₹200 है');
-      return;
-    }
-    if (amt > 50000) {
-      setErrors(isEn ? 'Maximum payout is ₹50,000' : 'अधिकतम निकासी ₹50,000 है');
-      return;
-    }
-    if (amt > balance) {
-      setErrors(isEn ? 'Insufficient balance' : 'अपर्याप्त शेष');
-      return;
-    }
-
-    if (dailyRemainingCount <= 0) {
-      setErrors(isEn ? 'Daily withdrawal limit of 3 reached' : 'दैनिक निकासी सीमा 3 पूरी हो गई है');
-      return;
-    }
-
-    if (paymentMethod === 'BankCard' && !savedBank) {
-      setErrors(isEn ? 'Please add a Bank Card account first' : 'कृपया पहले बैंक कार्ड खाता जोड़ें');
-      return;
-    }
-    if (paymentMethod === 'UPI' && !savedUpi) {
-      setErrors(isEn ? 'Please add a UPI account first' : 'कृपया पहले UPI खाता जोड़ें');
-      return;
-    }
-
-    // Process payment simulation
-    setIsProcessing(true);
-    setTimeout(async () => {
+    // Create pending withdraw request
+    const user = auth.currentUser;
+    const savedPhone = localStorage.getItem('userPhone');
+    if (savedPhone) {
       try {
-        const user = auth.currentUser;
-        if (!user) throw new Error("No authenticated user");
-
-        const newBalance = balance - amt;
-
-        // Fetch user profile info
-        let userNickname = 'User';
-        let userAvatar = '';
-        let userShortUid = '';
-        try {
+        let nickname = 'User';
+        let avatar = '';
+        let uid = '';
+        if (user) {
           const userDoc = await getDoc(doc(db, 'users', user.uid));
           if (userDoc.exists()) {
-            userNickname = userDoc.data().nickname || 'User';
-            userAvatar = userDoc.data().avatar || '';
-            userShortUid = userDoc.data().uid || '';
+            nickname = userDoc.data().nickname || 'User';
+            avatar = userDoc.data().avatar || '';
+            uid = userDoc.data().uid || '';
           }
-        } catch (err) {
-          console.error("Error fetching user profile for WD write:", err);
         }
 
-        await updateDoc(doc(db, 'users', user.uid), {
-          balance: newBalance,
-          updatedAt: serverTimestamp()
-        });
-        
-        // Add record
-        const maskDetails = paymentMethod === 'BankCard' 
-          ? `${savedBank?.bankName} (Ac: ..${savedBank?.accountNumber.slice(-4)})`
-          : savedUpi?.upiId || '';
-
-        const now = new Date();
-        const pad = (n: number) => n.toString().padStart(2, '0');
-        const formattedDate = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-
-        const newRecord: WithdrawalRecord = {
-          id: `WD${Date.now().toString().slice(-6)}`,
-          amount: amt,
-          method: paymentMethod,
-          accountDetails: maskDetails,
-          status: 'Pending',
-          time: formattedDate
-        };
-
-        // Write to Firestore withdrawRequests for full-stack admin panel approval
-        await setDoc(doc(db, 'withdrawRequests', newRecord.id), {
-          id: newRecord.id,
-          userId: user.uid,
-          nickname: userNickname,
-          avatar: userAvatar,
-          uid: userShortUid || user.uid.substring(0, 8),
-          amount: amt,
-          method: paymentMethod,
-          accountDetails: maskDetails,
+        await addDoc(collection(db, 'withdrawRequests'), {
+          userId: user?.uid || savedPhone,
+          phone: savedPhone,
+          nickname: nickname,
+          avatar: avatar,
+          uid: uid || savedPhone,
+          amount: withdrawNum,
+          methodType: paymentMethod.type,
+          methodDetails: paymentMethod.type === 'UPI' ? paymentMethod.upiId : paymentMethod.cardNumber,
           status: 'pending',
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
-
-        const updatedHistory = [newRecord, ...historyRecords];
-        setHistoryRecords(updatedHistory);
-        localStorage.setItem(historyStorageKey, JSON.stringify(updatedHistory));
-
-        // Update daily count
-        const currentUsed = 3 - dailyRemainingCount;
-        const newUsed = currentUsed + 1;
-        localStorage.setItem(dailyCountStorageKey, newUsed.toString());
-        setDailyRemainingCount(3 - newUsed);
-
+        
+        onRefresh(); // Trigger parent refresh
+        
         if (onAddNotification) {
           onAddNotification({
-            titleEn: 'APPLY FOR WITHDRAWAL',
-            titleHi: 'निकासी के लिए आवेदन करें',
-            contentEn: 'Your withdrawal request has been sent',
-            contentHi: 'आपका निकासी अनुरोध भेज दिया गया है',
+            titleEn: 'WITHDRAWAL REQUEST',
+            titleHi: 'निकासी अनुरोध',
+            contentEn: `Your withdrawal request of ₹ ${withdrawNum.toFixed(2)} has been sent. Please wait for audit.`,
+            contentHi: `आपका ₹ ${withdrawNum.toFixed(2)} का निकासी अनुरोध भेज दिया गया है। कृपया ऑडिट की प्रतीक्षा करें।`,
             type: 'withdraw_request'
           });
         }
-        setSuccessAmount(amt);
-        setShowSuccessToast(true);
-        setWithdrawAmount('');
-        onRefresh();
-      } catch (e) {
-        console.error('Withdrawal DB sync error:', e);
-      } finally {
-        setIsProcessing(false);
-      }
-    }, 1500);
-  };
 
-  const filteredBanks = bankSearchQuery.trim() === '' 
-    ? INDIAN_BANKS 
-    : INDIAN_BANKS.filter(b => b.toLowerCase().includes(bankSearchQuery.toLowerCase()));
+        alert('Withdrawal request submitted! Please wait for admin approval.');
+        setAmount('');
+      } catch (e) {
+        console.error('Withdrawal request error:', e);
+        alert('Failed to submit withdrawal request.');
+      }
+    }
+  };
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    // Simple alert-less feedback could be added if needed, but keeping it minimal as requested
+    alert('Copied to clipboard');
+  };
+
+  const formatDate = (timestamp: any) => {
+    if (!timestamp) return 'Just now';
+    let date: Date;
+    if (typeof timestamp.toDate === 'function') {
+      date = timestamp.toDate();
+    } else if (timestamp.seconds) {
+      date = new Date(timestamp.seconds * 1000);
+    } else {
+      date = new Date(timestamp);
+    }
+    
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
   };
 
   return (
-    <div id="wd-container" className="fixed inset-0 z-50 overflow-y-auto w-full min-h-screen bg-[#30090a] font-sans flex flex-col mx-auto max-w-[410px]">
+    <div className="fixed inset-0 z-50 overflow-y-auto w-full min-h-screen font-sans flex flex-col mx-auto max-w-[410px] bg-[#2c1012]">
       
       {/* Header */}
-      <div className="sticky top-0 w-full h-[54px] bg-[#30090a] flex items-center justify-between px-4 z-20">
-        <button onClick={onClose} className="h-10 w-10 flex items-center justify-start cursor-pointer text-[#ffccd1]">
-          <ChevronLeft className="h-6 w-6" />
+      <div className="sticky top-0 w-full h-[48px] bg-[#3d0f10] border-b border-white/5 flex items-center px-3 z-20 shadow-md">
+        <button onClick={onClose} className="h-10 w-10 flex items-center justify-start text-white cursor-pointer active:scale-90 transition-transform">
+          <ChevronLeft className="h-5 w-5" />
         </button>
-        <div className="flex gap-6 items-center flex-1 justify-center -ml-8">
-           <button 
-             onClick={() => setActiveTab('Withdraw')}
-             className={`text-[17px] font-bold relative pb-1 transition-all ${activeTab === 'Withdraw' ? 'text-white' : 'text-neutral-500'}`}
-           >
-             {isEn ? 'Withdraw' : 'निकासी'}
-             {activeTab === 'Withdraw' && <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-1 bg-[#ffbb0d] rounded-full" />}
-           </button>
-           <button 
-             onClick={() => { setActiveTab('History'); setShowHistoryModal(true); }}
-             className={`text-[15px] font-medium transition-all ${activeTab === 'History' ? 'text-white' : 'text-neutral-500'}`}
-           >
-             {isEn ? 'Withdrawal history' : 'निकासी इतिहास'}
-           </button>
-        </div>
+        <div className="flex-1 text-center text-white font-medium text-[16px] tracking-wide ml-2">Withdraw</div>
+        <button onClick={scrollToHistory} className="text-white/90 text-[13px] font-medium whitespace-nowrap active:scale-95 transition-transform hover:text-white">
+          Withdrawal history
+        </button>
       </div>
 
-      <div className="px-4 py-3 flex-1 overflow-y-auto space-y-4">
+      <div className="px-4 py-4 flex-1">
         
-        {/* Available Balance Card - Simple Refined Version */}
-        <div className="relative rounded-[20px] p-5 h-[155px] bg-gradient-to-br from-[#ffcd29] via-[#ffb900] to-[#f98200] shadow-sm overflow-hidden">
-          <div className="flex items-center gap-1.5 text-[#3d1100] font-semibold text-[13px] opacity-90">
-            <Wallet className="w-4 h-4 fill-[#3d1100]/20" />
-            {isEn ? 'Available balance' : 'उपलब्ध शेष राशि'}
-          </div>
+        {/* Balance Card */}
+        <div className="rounded-[12px] px-3.5 py-3 mb-4 shadow-sm relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #FFCB15 0%, #FF9700 100%)' }}>
+          {/* Subtle background decoration curves */}
+          <div className="absolute top-[-40%] right-[-10%] w-[200px] h-[200px] rounded-full border-[20px] border-white/10 pointer-events-none"></div>
+          <div className="absolute top-[-10%] right-[-25%] w-[250px] h-[250px] rounded-full border-[24px] border-[#FF8A00]/10 pointer-events-none"></div>
           
-          <div className="mt-2.5 flex items-center gap-2">
-            <span className="text-[34px] font-bold text-[#3d1100] tracking-tight">
-              ₹{balance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+          <div className="flex justify-between items-center z-10 relative">
+            <div className="flex items-center text-[#4A1500] text-[14px] font-medium gap-2">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="2" y="5" width="20" height="14" rx="3" fill="#FF7043"/>
+                <path d="M2 8C2 6.34315 3.34315 5 5 5H10V19H5C3.34315 19 2 17.6569 2 16V8Z" fill="#FF5722"/>
+                <rect x="16" y="9" width="7" height="6" rx="2" fill="#FFC107"/>
+                <circle cx="19.5" cy="12" r="1.5" fill="#FFF3E0"/>
+              </svg>
+              Available balance
+            </div>
+          </div>
+          <div className="flex items-center gap-2.5 mt-2 z-10 relative">
+            <span className="text-[#331100] text-[30px] font-bold leading-none tracking-tight flex items-center">
+              ₹{balance.toFixed(2)}
             </span>
-            <button 
-              onClick={onRefresh}
-              className="p-1 hover:bg-black/5 rounded-full transition-all active:rotate-180"
-            >
-              <RefreshCw className="h-[22px] w-[22px] text-[#3d1100]" />
+            <button onClick={handleRefreshClick} className="p-1 hover:bg-black/10 rounded-full transition-colors active:scale-90">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-white/90">
+                <path d="M19 8.5H9C7.34315 8.5 6 9.84315 6 11.5M6 15.5H16C17.6569 15.5 19 14.1569 19 12.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                <path d="M15.5 5L19 8.5L15.5 12M8.5 19L5 15.5L8.5 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
             </button>
           </div>
-          
-          {/* Bottom Card Elements */}
-          <div className="absolute bottom-5 left-5">
-             <div className="w-9 h-6 bg-white/20 rounded-sm border border-white/30 flex flex-col gap-0.5 p-1 relative overflow-hidden">
-                <div className="w-full h-0.5 bg-black/10" />
-                <div className="w-4 h-1 bg-black/5 rounded-full mt-auto" />
-             </div>
+          <div className="flex items-center justify-between mt-5 z-10 relative text-[#331100]">
+             <svg width="34" height="24" viewBox="0 0 34 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="opacity-90 drop-shadow-sm">
+                <rect width="34" height="24" rx="4" fill="#FFEBB7"/>
+                <path d="M11 0V24" stroke="#DCAE46" strokeWidth="1"/>
+                <path d="M23 0V24" stroke="#DCAE46" strokeWidth="1"/>
+                <path d="M0 7H11" stroke="#DCAE46" strokeWidth="1"/>
+                <path d="M0 16H11" stroke="#DCAE46" strokeWidth="1"/>
+                <path d="M23 7H34" stroke="#DCAE46" strokeWidth="1"/>
+                <path d="M23 16H34" stroke="#DCAE46" strokeWidth="1"/>
+                <rect x="14" y="6" width="6" height="12" rx="1.5" stroke="#DCAE46" strokeWidth="1"/>
+             </svg>
+            <span className="font-mono text-[16px] tracking-[0.2em] font-bold opacity-90 mt-1">**** ****</span>
           </div>
-
-          <div className="absolute bottom-5 right-5 text-[#3d1100] font-mono text-[13px] opacity-50 font-bold tracking-[0.2em]">
-             **** ****
-          </div>
-
-          {/* Subtle Texture/Wave Effect */}
-          <div className="absolute -right-4 -top-4 w-32 h-32 rounded-full bg-white/10 blur-xl pointer-events-none" />
         </div>
 
-        {/* Method Selection Tiles - Exactly like reference */}
-        <div className="grid grid-cols-3 gap-2.5">
-          <button 
-            onClick={() => setPaymentMethod('UPI')}
-            className={`flex flex-col items-center justify-center gap-2 p-3 rounded-xl h-[100px] border transition-all ${paymentMethod === 'UPI' ? 'bg-[#ffbb0d] border-[#ffbb0d] text-[#3d1100]' : 'bg-[#3d1100] border-transparent text-neutral-500'}`}
+        {/* Withdrawal Method Tabs */}
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div 
+            onClick={() => setActiveTab('UPI')} 
+            className={`flex flex-col items-center justify-center py-3 rounded-[10px] cursor-pointer shadow-sm transition-all active:scale-95 ${
+              activeTab === 'UPI' 
+                ? 'bg-[#FFD700] text-[#2c1012] scale-[1.02]' 
+                : 'bg-[#3d0f10] border border-[#FFD700]/10 text-[#FFD700]/60 hover:bg-[#4a1315]/80'
+            }`}
           >
-            <div className={`w-14 h-12 rounded-lg flex items-center justify-center overflow-hidden mb-0.5 ${paymentMethod === 'UPI' ? 'bg-white/20' : 'bg-white/5'}`}>
-              <img 
-                src="https://upload.wikimedia.org/wikipedia/commons/e/e1/UPI-Logo-vector.svg" 
-                alt="UPI" 
-                className={`w-10 h-10 object-contain p-1 ${paymentMethod === 'UPI' ? 'brightness-50' : 'opacity-40 grayscale'}`} 
-              />
-            </div>
-            <span className="text-[10px] font-bold uppercase tracking-wider">UPI</span>
-          </button>
-
-          <button 
-            onClick={() => setPaymentMethod('BankCard')}
-            className={`flex flex-col items-center justify-center gap-2 p-3 rounded-xl h-[100px] border transition-all ${paymentMethod === 'BankCard' ? 'bg-[#ffbb0d] border-[#ffbb0d] text-[#3d1100]' : 'bg-[#3d1100] border-transparent text-neutral-500'}`}
+             <ScanLine className="h-6 w-6 mb-1.5 stroke-[1.5]" />
+             <span className="font-bold text-[13px]">UPI</span>
+          </div>
+          <div 
+            onClick={() => setActiveTab('Bank')} 
+            className={`flex flex-col items-center justify-center py-3 rounded-[10px] cursor-pointer shadow-sm transition-all active:scale-95 ${
+              activeTab === 'Bank' 
+                ? 'bg-[#FFD700] text-[#2c1012] scale-[1.02]' 
+                : 'bg-[#3d0f10] border border-[#FFD700]/10 text-[#FFD700]/60 hover:bg-[#4a1315]/80'
+            }`}
           >
-            <div className={`w-14 h-12 rounded-lg flex items-center justify-center mb-0.5 ${paymentMethod === 'BankCard' ? 'bg-white/20' : 'bg-white/5'}`}>
-              <CreditCard className={`w-7 h-7 ${paymentMethod === 'BankCard' ? 'text-[#3d1100]' : 'text-neutral-500'}`} />
-            </div>
-            <span className="text-[10px] font-bold uppercase tracking-wider">{isEn ? 'Bank Card' : 'बैंक कार्ड'}</span>
-          </button>
-
-          <button 
-            disabled
-            className="flex flex-col items-center justify-center gap-2 p-3 rounded-xl h-[100px] border bg-[#3d1100] border-transparent text-neutral-500 opacity-60 relative grayscale cursor-not-allowed"
-          >
-            <div className="w-14 h-12 rounded-lg flex items-center justify-center bg-white/5 mb-0.5">
-              <Coins className="w-7 h-7 opacity-40" />
-            </div>
-            <span className="text-[10px] font-bold uppercase tracking-wider">USDT</span>
-            <div className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-red-600 rounded-full" />
-          </button>
+             <Landmark className="h-6 w-6 mb-1.5 stroke-[1.5]" />
+             <span className="font-bold text-[13px]">BANK CARD</span>
+          </div>
         </div>
 
-        {/* Saved Method Detail Area */}
-        <div className="mt-1">
-          <AnimatePresence mode="wait">
-            {paymentMethod === 'UPI' ? (
-              <motion.div key="upi-area" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                 {savedUpi ? (
-                   <div className="bg-[#3d1100] p-4 rounded-xl border border-white/5 flex items-center justify-between">
-                     <div className="flex items-center gap-3">
-                       <div className="w-10 h-10 rounded-full bg-[#ffbb0d]/10 flex items-center justify-center">
-                         <Send className="w-5 h-5 text-[#ffbb0d] rotate-[-45deg]" />
-                       </div>
-                       <div className="flex flex-col">
-                         <span className="text-white font-semibold text-sm">{savedUpi.upiId}</span>
-                         <span className="text-neutral-500 text-[10px] uppercase font-bold tracking-wider">{savedUpi.holderName}</span>
-                       </div>
-                     </div>
-                     <button onClick={() => setShowAddUpiModal(true)} className="text-[#ffbb0d] text-xs font-bold px-3.5 py-1.5 bg-[#ffbb0d]/10 rounded-full active:scale-95 transition-transform">
-                       {isEn ? 'Edit' : 'बदलें'}
-                     </button>
-                   </div>
-                 ) : (
-                   <button 
-                     onClick={() => setShowAddUpiModal(true)}
-                     className="w-full py-7 flex flex-col items-center justify-center gap-2 border-2 border-dashed border-white/10 rounded-xl bg-black/10 text-neutral-500 hover:text-white transition-all active:scale-[0.98]"
-                   >
-                     <div className="w-10 h-10 rounded-lg border border-dashed border-white/20 flex items-center justify-center">
-                       <Plus className="w-6 h-6" />
-                     </div>
-                     <span className="text-xs font-bold uppercase tracking-widest">{isEn ? 'Add UPI' : 'UPI जोड़ें'}</span>
-                   </button>
-                 )}
-              </motion.div>
-            ) : paymentMethod === 'BankCard' ? (
-              <motion.div key="bank-area" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                 {savedBank ? (
-                   <div className="bg-[#3d1100] p-4 rounded-xl border border-white/5 flex items-center justify-between">
-                     <div className="flex items-center gap-3">
-                       <div className="w-10 h-10 rounded-full bg-[#ffbb0d]/10 flex items-center justify-center">
-                         <CreditCard className="w-5 h-5 text-[#ffbb0d]" />
-                       </div>
-                       <div className="flex flex-col">
-                         <span className="text-white font-semibold text-sm">{savedBank.bankName}</span>
-                         <span className="text-neutral-500 text-[10px] font-bold uppercase tracking-wider">{`•••• ${savedBank.accountNumber.slice(-4)}`}</span>
-                       </div>
-                     </div>
-                     <button onClick={() => setShowAddBankModal(true)} className="text-[#ffbb0d] text-xs font-bold px-3.5 py-1.5 bg-[#ffbb0d]/10 rounded-full active:scale-95 transition-transform">
-                       {isEn ? 'Edit' : 'बदलें'}
-                     </button>
-                   </div>
-                 ) : (
-                   <button 
-                     onClick={() => setShowAddBankModal(true)}
-                     className="w-full py-7 flex flex-col items-center justify-center gap-2 border-2 border-dashed border-white/10 rounded-xl bg-black/10 text-neutral-500 hover:text-white transition-all active:scale-[0.98]"
-                   >
-                     <div className="w-10 h-10 rounded-lg border border-dashed border-white/20 flex items-center justify-center">
-                       <Plus className="w-6 h-6" />
-                     </div>
-                     <span className="text-xs font-bold uppercase tracking-widest">{isEn ? 'Add Bank Card' : 'बैंक कार्ड जोड़ें'}</span>
-                   </button>
-                 )}
-              </motion.div>
-            ) : null}
-          </AnimatePresence>
-        </div>
-
-        {/* Withdrawal Form Section - Matches Ref */}
-        <div className="space-y-4">
-          <div className="relative">
-             <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-2 pointer-events-none">
-                <span className="text-[#ffbb0d] text-[18px] font-bold">₹</span>
-             </div>
-             <input 
-               type="number"
-               value={withdrawAmount}
-               onChange={(e) => setWithdrawAmount(e.target.value)}
-               placeholder={isEn ? 'Please enter the amount' : 'कृपया राशि दर्ज करें'}
-               className="w-full h-14 pl-12 pr-16 bg-[#3d1100] rounded-xl border-none outline-none text-white text-[16px] font-semibold focus:ring-1 focus:ring-[#ffbb0d]/30 transition-all placeholder:text-neutral-600"
-             />
-             <button 
-               onClick={handleAllAmount}
-               className="absolute right-3 top-1/2 -translate-y-1/2 px-4 py-1.5 border border-[#ffbb0d]/40 text-[#ffbb0d] font-bold text-[12px] rounded-md active:scale-90 transition-all"
-             >
-               {isEn ? 'All' : 'सभी'}
-             </button>
-          </div>
-
-          <div className="space-y-2 px-1">
-             <div className="flex items-center justify-between text-[13px] font-medium">
-               <span className="text-neutral-500">{isEn ? 'Withdrawable balance' : 'निकासी योग्य शेष'}</span>
-               <span className="text-[#ffbb0d]">₹{balance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-             </div>
-             <div className="flex items-center justify-between text-[13px] font-medium">
-               <span className="text-neutral-500">{isEn ? 'Withdrawal amount received' : 'प्राप्त निकासी राशि'}</span>
-               <span className="text-[#ffbb0d]">₹{(parseFloat(withdrawAmount) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-             </div>
-          </div>
-
-          {errors && (
-            <div className="text-red-500 font-bold text-xs text-center p-2 bg-red-900/20 rounded-lg border border-red-500/20">
-              {errors}
-            </div>
-          )}
-          <button 
-            disabled={isProcessing}
-            onClick={handleWithdrawAction}
-            className={`w-full py-4.5 rounded-full font-bold text-sm uppercase tracking-widest shadow-md active:scale-95 transition-all flex items-center justify-center gap-2 ${withdrawAmount ? 'bg-[#ffbb0d] text-[#3d1100]' : 'bg-[#3d1100] text-neutral-600/60'}`}
-          >
-            {isProcessing ? (
-              <RefreshCw className="w-5 h-5 animate-spin" />
+        {/* Account Selection Box */}
+        <div 
+          onClick={() => setShowBindModal(true)} 
+          className="flex items-center justify-between bg-[#3d0f10] border border-[#FFD700]/10 py-3 px-4 rounded-[10px] mb-4 shadow-sm cursor-pointer hover:bg-[#4a1315] transition-colors active:scale-95"
+        >
+          <div className="flex items-center gap-3 border-r border-[#FFD700]/20 pr-3 h-[24px]">
+            {activeTab === 'Bank' ? (
+              <Landmark className="text-[#FFD700] h-5 w-5" />
             ) : (
-              <span>{isEn ? 'Withdraw' : 'निकालें'}</span>
+              <ScanLine className="text-[#FFD700] h-5 w-5" />
             )}
+            <span className="text-white/70 text-[12px] font-medium min-w-[60px]">
+              {paymentMethod && paymentMethod.type === activeTab 
+                ? (activeTab === 'Bank' ? 'Bank Card' : 'UPI')
+                : (activeTab === 'Bank' ? 'Bank Card' : 'UPI')
+              }
+            </span>
+          </div>
+          <div className="flex-1 px-3 text-white font-mono text-[13px] truncate">
+            {paymentMethod && paymentMethod.type === activeTab 
+              ? (activeTab === 'Bank' ? paymentMethod.cardNumber : paymentMethod.upiId) 
+              : <span className="text-white/40 italic font-sans text-[12px]">Add {activeTab} Account</span>
+            }
+          </div>
+          <ChevronRight className="h-4 w-4 text-white/40 shrink-0" />
+        </div>
+        
+        {/* Withdrawal Form Card */}
+        <div className="bg-[#3d0f10] border border-[#FFD700]/5 rounded-[12px] p-4 mb-4 shadow-md">
+          {/* Amount Input */}
+          <div className="flex items-center bg-[#2c1012] border border-[#FFD700]/10 rounded-[10px] px-3 py-2 h-[46px] mb-3">
+            <span className="text-[#FFD700] text-[18px] font-black mr-2 shadow-sm drop-shadow">₹</span>
+            <input 
+              type="number"
+              placeholder="Please enter the amount"
+              className="flex-1 bg-transparent text-white outline-none placeholder:text-white/30 font-medium text-[14px]"
+              value={amount}
+              onChange={e => handleAmountChange(e.target.value)}
+            />
+          </div>
+
+          <div className="flex items-center justify-between text-[12px] mb-2">
+            <span className="text-white/60">Withdrawable balance <span className="text-[#FFD700] font-bold ml-1">₹{balance.toFixed(2)}</span></span>
+            <button onClick={() => { setAmount(balance.toString()); setError(''); }} className="border border-[#FFD700] text-[#FFD700] hover:bg-[#FFD700] hover:text-[#2c1012] transition-colors rounded-full px-3 py-0.5 font-semibold text-[11px] active:scale-95 cursor-pointer">
+              All
+            </button>
+          </div>
+          <div className="flex items-center justify-between text-[12px] mb-4">
+            <span className="text-white/60">Withdrawal amount received</span>
+            <span className="text-[#FFD700] font-bold text-[13px]">₹{(amount ? Math.max(0, parseFloat(amount)) : 0).toFixed(2)}</span>
+          </div>
+          
+          {error && <div className="text-[#FF4148] text-[11px] -mt-2 mb-3 font-medium text-center">{error}</div>}
+
+          <button 
+            onClick={handleWithdrawSubmit} 
+            disabled={!!error || !amount || parseFloat(amount) < 110}
+            className={`w-full py-3 rounded-full font-bold text-[14px] tracking-wide shadow-md transition-all active:scale-95 cursor-pointer ${
+              amount && parseFloat(amount) >= 110 && !error
+                ? 'bg-gradient-to-r from-[#FFC107] to-[#FFD700] text-[#2c1012] shadow-[0_3px_10px_rgba(255,215,0,0.3)] hover:brightness-110' 
+                : 'bg-[#2c1012] text-white/30 cursor-not-allowed'
+            }`}
+          >
+            Withdraw
           </button>
         </div>
 
-        {/* Tips Section - Diamond bullets like ref */}
-        <div className="bg-[#1b0809] p-5 rounded-[22px] border border-white/5 space-y-4">
-           <div className="flex flex-col gap-3.5">
-              {[
-                { en: `Need to bet ₹0.00 to be able to withdraw`, hi: `निकालने के लिए ₹0.00 का दांव लगाना होगा` },
-                { en: `Withdraw time 00:00-23:59`, hi: `निकासी का समय 00:00-23:59` },
-                { en: `Inday Remaining Withdrawal Times ${dailyRemainingCount}`, hi: `आज के शेष निकासी समय ${dailyRemainingCount}` },
-                { en: `Withdrawal amount range ₹100.00-₹50,000.00`, hi: `निकासी राशि सीमा ₹100.00-₹50,000.00` },
-                { en: `Please confirm your beneficial account information before withdrawing. If your information is incorrect, our company will not be liable for the amount of loss`, hi: `निकालने से पहले कृपया अपने लाभकारी खाते की जानकारी की पुष्टि करें। यदि आपकी जानकारी गलत है, तो हमारी कंपनी नुकसान की राशि के लिए उत्तरदायी नहीं होगी` },
-                { en: `If your beneficial information is incorrect, please contact customer service`, hi: `यदि आपकी जानकारी गलत है, तो कृपया ग्राहक सेवा से संपर्क करें` }
-              ].map((tip, i) => (
-                <div key={i} className="flex gap-2.5 text-[11px] leading-relaxed">
-                   <div className="shrink-0 w-1.5 h-1.5 rotate-45 bg-[#ffbb0d] mt-1.5" />
-                   <span className="text-[#8c686a] font-medium">{isEn ? tip.en : tip.hi}</span>
-                </div>
-              ))}
-           </div>
+        {/* Withdrawal Rules */}
+        <div className="bg-[#3d0f10] rounded-[12px] p-4 mb-6 border border-white/[0.03] shadow-sm">
+          <ul className="space-y-2.5 text-[11.5px] text-white/60 leading-snug">
+            <li className="flex items-start gap-2.5">
+               <span className="text-[#FFD700] text-[10px] mt-1 shrink-0">◆</span>
+               <span>Need to bet <span className="text-[#FF4148] font-bold">₹0.00</span> to be able to withdraw</span>
+            </li>
+            <li className="flex items-start gap-2.5">
+               <span className="text-[#FFD700] text-[10px] mt-1 shrink-0">◆</span>
+               <span>Withdraw time <span className="text-[#FF4148] font-bold">00:00-23:59</span></span>
+            </li>
+            <li className="flex items-start gap-2.5">
+               <span className="text-[#FFD700] text-[10px] mt-1 shrink-0">◆</span>
+               <span>Inday Remaining Withdrawal Times <span className="text-[#FF4148] font-bold">3</span></span>
+            </li>
+            <li className="flex items-start gap-2.5">
+               <span className="text-[#FFD700] text-[10px] mt-1 shrink-0">◆</span>
+               <span>Withdrawal amount range <span className="text-[#FF4148] font-bold">₹110.00-₹50,000.00</span></span>
+            </li>
+            <li className="flex items-start gap-2.5">
+               <span className="text-[#FFD700] text-[10px] mt-1 shrink-0">◆</span>
+               <span>Please confirm your beneficial account information before withdrawing. If your information is incorrect, our company will not be liable for the amount of loss</span>
+            </li>
+            <li className="flex items-start gap-2.5">
+               <span className="text-[#FFD700] text-[10px] mt-1 shrink-0">◆</span>
+               <span>If your beneficial information is incorrect, please contact customer service</span>
+            </li>
+          </ul>
         </div>
 
-        {/* History Section - Enhanced version based on ref */}
-        <div className="pb-32 px-1 space-y-6">
-           <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-[4px] bg-[#ffbb0d] flex flex-col items-center justify-center p-1.5 shadow-lg">
-                 <div className="w-full h-0.5 bg-[#3d1100] rounded-full" />
-                 <div className="w-full h-0.5 bg-[#3d1100] rounded-full mt-1" />
-                 <div className="w-2/3 h-0.5 bg-[#3d1100] rounded-full mt-1 self-start" />
-              </div>
-              <span className="text-white font-bold text-[16px]">{isEn ? 'Withdrawal history' : 'निकासी इतिहास'}</span>
-           </div>
+        {/* Withdrawal history Section */}
+        <div ref={historyRef} className="flex items-center gap-3 mb-6 relative z-10">
+          <div className="bg-[#FFD700] rounded p-1 shadow-sm">
+            <FileText className="w-5 h-5 text-[#2c1012]" />
+          </div>
+          <h3 className="text-white font-bold text-[17px] tracking-wide">Withdrawal history</h3>
+        </div>
 
-           {historyRecords.length > 0 ? (
-             <div className="space-y-4">
-                {historyRecords.slice(0, 5).map((record) => (
-                  <div key={record.id} className="bg-[#1b0809] rounded-xl overflow-hidden shadow-lg border border-white/5">
-                    <div className="p-5 space-y-4">
-                      {/* Status Header */}
-                      <div className="flex items-center justify-between">
-                         <div className="px-3 py-1 bg-red-600/90 rounded-md text-white text-[10px] font-black uppercase tracking-widest">
-                           {isEn ? 'Withdraw' : 'निकालना'}
-                         </div>
-                         <div className={`text-[13px] font-bold ${
-                           record.status === 'Success' ? 'text-emerald-500' : 
-                           record.status === 'Pending' ? 'text-[#ffbb0d]' : 
-                           'text-rose-500'
-                         }`}>
-                           {record.status === 'Success' ? (isEn ? 'Completed' : 'सफल') : 
-                            record.status === 'Pending' ? (isEn ? 'Pending' : 'लंबित') : 
-                            (isEn ? 'Pending' : 'लंबित')}
-                         </div>
-                      </div>
+        {withdrawHistory.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-8 opacity-70">
+             <div className="w-32 h-32 mb-4 bg-white/5 rounded-full flex items-center justify-center relative inner-shadow">
+               <FileText className="h-12 w-12 text-white/20" />
+             </div>
+             <span className="text-white/50 font-medium text-[13px] tracking-wide">No data</span>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {withdrawHistory.slice(0, 5).map((item) => {
+              const isPending = item.status === 'pending';
+              const isRejected = item.status === 'rejected';
+              let statusText = isPending ? 'Processing' : (isRejected ? 'Rejected' : 'Completed');
+              let statusColor = isPending ? 'text-[#FFD700]' : (isRejected ? 'text-[#FF4148]' : 'text-emerald-400');
 
-                      {/* Detail Rows */}
-                      <div className="space-y-2.5">
-                        <div className="flex justify-between items-center text-[12px]">
-                          <span className="text-neutral-500 font-medium">{isEn ? 'Balance' : 'राशि'}</span>
-                          <span className="text-[#ffbb0d] font-black text-[14px]">₹{record.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                        </div>
-                        
-                        <div className="flex justify-between items-center text-[12px]">
-                          <span className="text-neutral-500 font-medium">{isEn ? 'Type' : 'प्रकार'}</span>
-                          <span className="text-neutral-300 font-bold uppercase">{record.method === 'UPI' ? 'UPI' : 'Bank Card'}</span>
-                        </div>
-
-                        <div className="flex justify-between items-center text-[12px]">
-                          <span className="text-neutral-500 font-medium">{isEn ? 'Time' : 'समय'}</span>
-                          <span className="text-neutral-400 font-medium">{record.time}</span>
-                        </div>
-
-                        <div className="flex justify-between items-center text-[12px]">
-                          <span className="text-neutral-500 font-medium">{isEn ? 'Order number' : 'ऑर्डर नंबर'}</span>
-                          <div className="flex items-center gap-1">
-                             <span className="text-neutral-400 font-medium truncate max-w-[150px]">{record.id}</span>
-                             <button onClick={() => copyToClipboard(record.id)} className="p-1 hover:bg-black/5 rounded transition-colors group">
-                               <Copy className="w-3.5 h-3.5 text-neutral-500 group-active:text-[#ffbb0d]" />
-                             </button>
-                          </div>
-                        </div>
+              return (
+                <div key={item.id} className="relative bg-[#3d0f10] rounded-[16px] p-5 shadow-md flex flex-col space-y-3.5 text-left border border-white/[0.02]">
+                  <div className="flex items-center justify-between pb-2.5 border-b border-[#FFD700]/10">
+                    <span className="inline-flex items-center px-3 py-1 text-[11px] font-black tracking-wider uppercase bg-[#FF4148] text-white rounded-md shadow-sm">
+                      Withdraw
+                    </span>
+                    <span className={`text-[13.5px] font-bold tracking-wider ${statusColor}`}>{statusText}</span>
+                  </div>
+                  <div className="space-y-2.5 pt-1">
+                    <div className="flex justify-between items-center text-[13px]">
+                      <span className="text-white/60 font-medium tracking-wide">Balance</span>
+                      <span className="text-[#FFD700] font-black text-[15px] drop-shadow-sm">₹{Number(item.amount).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-[13px]">
+                      <span className="text-white/60 font-medium tracking-wide">Type</span>
+                      <span className="text-white/90 font-medium">{item.methodType || 'UPI'}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-[13px]">
+                      <span className="text-white/60 font-medium tracking-wide">Time</span>
+                      <span className="text-white/80 font-mono text-[12px]">{formatDate(item.createdAt)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-[13px]">
+                      <span className="text-white/60 font-medium tracking-wide">Order number</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-white/80 font-mono text-[11.5px]">{'WD' + item.id.slice(0, 16).toUpperCase()}</span>
+                        <Copy className="h-[14px] w-[14px] text-white/50 cursor-pointer hover:text-white transition-colors" onClick={() => copyToClipboard('WD' + item.id.slice(0, 16).toUpperCase())} />
                       </div>
                     </div>
                   </div>
-                ))}
-             </div>
-           ) : (
-             <div className="flex flex-col items-center justify-center py-20 opacity-30">
-                <div className="relative mb-6">
-                   <div className="w-[100px] h-32 bg-[#3d1100] rounded-lg transform skew-x-[-1deg] border border-white/5 relative overflow-hidden flex flex-col items-center pt-4 gap-2">
-                      <div className="w-[70px] h-1.5 bg-white/10 rounded-full" />
-                      <div className="w-[60px] h-1.5 bg-white/10 rounded-full" />
-                      <div className="w-[70px] h-1.5 bg-white/10 rounded-full mt-4" />
-                      <div className="w-[50px] h-1.5 bg-white/10 rounded-full" />
-                   </div>
-                   {/* Floating accents */}
-                   <div className="absolute -bottom-4 -left-4 w-5 h-5 bg-[#ffbb0d]/10 rounded-md rotate-12 blur-[1px]" />
-                   <div className="absolute top-10 -right-6 w-8 h-8 bg-blue-500/5 rounded-full blur-md" />
                 </div>
-                <span className="text-[14px] font-medium text-neutral-600 tracking-wide">{isEn ? 'No data' : 'कोई डेटा नहीं'}</span>
-             </div>
-           )}
-
+              );
+            })}
+          </div>
+        )}
+        
+        <div className="mt-6 mb-16">
            <button 
-             onClick={() => setShowHistoryModal(true)}
-             className="w-full py-3.5 border border-[#ffbb0d]/40 rounded-full text-[#ffbb0d] font-bold text-[14px] active:scale-95 transition-all text-center tracking-wide"
+             onClick={() => { /* Navigate to a full history screen if it existed */ }} 
+             className="w-full h-[40px] border border-[#FFD700] rounded-full flex items-center justify-center text-[#FFD700] font-medium text-[15px] active:scale-95 transition-all cursor-pointer"
            >
-             {isEn ? 'All history' : 'सभी इतिहास'}
+             All history
            </button>
         </div>
+
       </div>
 
-      {/* Floating Support Icon */}
-      <div 
-        onClick={() => setShowSupportChat(true)}
-        className="fixed bottom-24 right-4 w-14 h-14 bg-[#ffbb0d] rounded-full shadow-[0_8px_25px_rgba(255,185,0,0.4)] flex items-center justify-center cursor-pointer active:scale-90 transition-transform z-40 border-4 border-white/10"
-      >
-        <Headset className="w-7 h-7 text-[#3d1100]" />
-        <div className="absolute top-1 right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#ffbb0d]" />
+      {/* Floating Chat Icon mapped to screenshot design */}
+      <div className="fixed bottom-24 right-5 z-40">
+        <button 
+          onClick={() => setShowChat(true)} 
+          className="bg-white rounded-full p-2.5 shadow-xl shadow-black/40 border-[3px] border-[#FFC107] active:scale-90 transition-transform cursor-pointer relative"
+        >
+           <MessageCircle className="h-9 w-9 text-[#FFC107] fill-current" />
+           <span className="absolute top-0 right-0 w-3 h-3 bg-[#FF4148] border-2 border-white rounded-full"></span>
+        </button>
       </div>
 
-      {/* Extreme Premium Action Button footer */}
-      {/* (Removed duplicate action button block that was causing syntax errors) */}
-
-      {/* =========================================
-                     ADD BANKCARD MODAL
-         ========================================= */}
       <AnimatePresence>
-        {showAddBankModal && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="absolute inset-0 z-50 bg-black/85 flex flex-col justify-end"
+        {showToast && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: 10 }}
+            transition={{ duration: 0.2 }}
+            className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[160px] bg-black/80 backdrop-blur-md rounded-[12px] p-5 flex flex-col items-center justify-center shadow-lg z-[100]"
           >
-            <motion.div 
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
-              transition={{ type: 'spring', damping: 25, stiffness: 210 }}
-              className="bg-[#1f0709] border-t border-[#ffbb0d]/30 rounded-t-3xl max-h-[85%] overflow-hidden flex flex-col shadow-2xl"
-            >
-              <div className="px-5 py-4.5 border-b border-white/5 flex items-center justify-between bg-black/25 shrink-0">
-                <span className="text-[14px] font-black uppercase tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-white to-[#ffbb0d]">
-                  {isEn ? 'Bank Account Credentials' : 'बैंक खाता विवरण दर्ज करें'}
-                </span>
-                <button 
-                  id="wd-add-bank-close"
-                  onClick={() => setShowAddBankModal(false)}
-                  className="text-[10px] font-black text-neutral-400 hover:text-white px-3 py-1.5 bg-white/5 rounded-full border border-white/10"
-                >
-                  {isEn ? 'Close' : 'बंद करें'}
-                </button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-5 space-y-4">
-                {bankError && (
-                  <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-400 font-bold text-xs rounded-xl">
-                    {bankError}
-                  </div>
-                )}
-
-                {/* Bank Name Search Input */}
-                <div className="relative">
-                  <label className="text-[10px] font-black text-neutral-400 tracking-wider uppercase mb-1.5 block">
-                    {isEn ? 'Select Bank Name' : 'बैंक का नाम चुनें'} <span className="text-red-500">*</span>
-                  </label>
-                  <div className="bg-[#120203] rounded-xl border border-white/5 p-3 flex items-center justify-between shadow-inner focus-within:border-[#ffbb0d]/30 transition-all">
-                    <input 
-                      id="wd-bank-search"
-                      type="text"
-                      value={bankSearchQuery}
-                      onChange={(e) => {
-                        setBankSearchQuery(e.target.value);
-                        setBankName(e.target.value);
-                        setShowBankDropdown(true);
-                      }}
-                      onFocus={() => setShowBankDropdown(true)}
-                      placeholder={isEn ? 'Search or type bank name' : 'बैंक का नाम खोजें या टाइप करें'}
-                      className="bg-transparent border-none outline-none text-xs text-white w-full font-bold"
-                    />
-                    <Search className="w-4 h-4 text-neutral-500" />
-                  </div>
-
-                  {/* Dropdown list */}
-                  <AnimatePresence>
-                    {showBankDropdown && (
-                      <motion.div 
-                        initial={{ opacity: 0, scaleY: 0.9 }}
-                        animate={{ opacity: 1, scaleY: 1 }}
-                        exit={{ opacity: 0, scaleY: 0.9 }}
-                        className="absolute left-0 right-0 mt-1 max-h-[180px] overflow-y-auto bg-[#130203] border border-white/10 rounded-xl shadow-2xl z-50 divide-y divide-white/[0.04]"
-                      >
-                        {filteredBanks.length > 0 ? (
-                          filteredBanks.map((bank, index) => (
-                            <div 
-                              key={`${bank}-${index}`}
-                              onClick={() => {
-                                setBankName(bank);
-                                setBankSearchQuery(bank);
-                                setShowBankDropdown(false);
-                              }}
-                              className="px-4 py-2.5 text-xs text-neutral-300 hover:bg-[#ffbb0d]/10 hover:text-[#ffbb0d] font-bold cursor-pointer flex items-center justify-between"
-                            >
-                              <span>{bank}</span>
-                              {bankName === bank && <Check className="w-3.5 h-3.5 text-[#ffbb0d]" />}
-                            </div>
-                          ))
-                        ) : (
-                          <div className="px-4 py-3 text-xs text-neutral-500 text-center">
-                            {isEn ? 'No bank found. Press enter.' : 'कोई बैंक नहीं मिला'}
-                          </div>
-                        )}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-
-                {/* Account Number */}
-                <div>
-                  <label className="text-[10px] font-black text-neutral-400 tracking-wider uppercase mb-1.5 block">
-                    {isEn ? 'Bank Account Number' : 'बैंक खाता संख्या'} <span className="text-red-500">*</span>
-                  </label>
-                  <div className="bg-[#120203] rounded-xl border border-white/5 p-3 flex items-center shadow-inner">
-                    <input 
-                      id="wd-bank-account"
-                      type="text"
-                      value={accountNumber}
-                      onChange={(e) => setAccountNumber(e.target.value)}
-                      placeholder={isEn ? 'Enter complete account number' : 'पूरी खाता संख्या दर्ज करें'}
-                      className="bg-transparent border-none outline-none text-xs text-white w-full font-bold font-mono"
-                    />
-                  </div>
-                </div>
-
-                {/* Holder Name */}
-                <div>
-                  <label className="text-[10px] font-black text-neutral-400 tracking-wider uppercase mb-1.5 block">
-                    {isEn ? 'Beneficiary Full Name' : 'लाभार्थी का पूरा नाम'} <span className="text-red-500">*</span>
-                  </label>
-                  <div className="bg-[#120203] rounded-xl border border-white/5 p-3 flex items-center shadow-inner">
-                    <input 
-                      id="wd-bank-holder"
-                      type="text"
-                      value={holderName}
-                      onChange={(e) => setHolderName(e.target.value)}
-                      placeholder={isEn ? 'As printed in physical passbook' : 'पासबुक के अनुसार नाम दर्ज करें'}
-                      className="bg-transparent border-none outline-none text-xs text-white w-full font-bold"
-                    />
-                  </div>
-                </div>
-
-                {/* IFSC Code */}
-                <div>
-                  <label className="text-[10px] font-black text-neutral-400 tracking-wider uppercase mb-1.5 block">
-                    {isEn ? 'IFSC Code' : 'IFSC कोड'} <span className="text-red-500">*</span>
-                  </label>
-                  <div className="bg-[#120203] rounded-xl border border-white/5 p-3 flex items-center shadow-inner">
-                    <input 
-                      id="wd-bank-ifsc"
-                      type="text"
-                      value={ifsc}
-                      onChange={(e) => setIfsc(e.target.value.toUpperCase())}
-                      placeholder={isEn ? 'e.g., SBIN0028120' : 'उदा: SBIN0028120'}
-                      className="bg-transparent border-none outline-none text-xs text-white w-full font-bold font-mono"
-                    />
-                  </div>
-                </div>
-
-                {/* Email Address */}
-                <div>
-                  <label className="text-[10px] font-black text-neutral-400 tracking-wider uppercase mb-1.5 block">
-                    {isEn ? 'Contact Email Address' : 'संपर्क ईमेल पता'}
-                  </label>
-                  <div className="bg-[#120203] rounded-xl border border-white/5 p-3 flex items-center shadow-inner">
-                    <input 
-                      id="wd-bank-email"
-                      type="email"
-                      value={bankEmail}
-                      onChange={(e) => setBankEmail(e.target.value)}
-                      placeholder={isEn ? 'For confirmation updates' : 'अपडेट की पुष्टि के लिए ईमेल'}
-                      className="bg-transparent border-none outline-none text-xs text-white w-full font-bold font-mono"
-                    />
-                  </div>
-                </div>
-
-                {/* Phone Mobile Number */}
-                <div className="pb-8">
-                  <label className="text-[10px] font-black text-neutral-400 tracking-wider uppercase mb-1.5 block">
-                    {isEn ? 'Contact Phone Number' : 'संपर्क फोन नंबर'}
-                  </label>
-                  <div className="bg-[#120203] rounded-xl border border-white/5 p-3 flex items-center shadow-inner">
-                    <input 
-                      id="wd-bank-phone"
-                      type="tel"
-                      value={bankPhone}
-                      onChange={(e) => setBankPhone(e.target.value)}
-                      placeholder={isEn ? '10-digit mobile number' : '10 अंकों का संख्या दर्ज करें'}
-                      className="bg-transparent border-none outline-none text-xs text-white w-full font-bold font-mono"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Button footer */}
-              <div className="p-4 bg-black/60 border-t border-white/5 shrink-0 flex gap-3.5 z-10">
-                <button 
-                  id="wd-bank-cancel"
-                  onClick={() => setShowAddBankModal(false)}
-                  className="w-1/2 py-3 bg-white/5 border border-white/10 rounded-full font-extrabold text-neutral-400 text-xs uppercase tracking-widest cursor-pointer text-center hover:bg-white/10"
-                >
-                  {isEn ? 'Cancel' : 'रद्द करें'}
-                </button>
-                <button 
-                  id="wd-bank-save"
-                  onClick={saveBankDetails}
-                  className="w-1/2 py-3 bg-gradient-to-r from-[#ffd36c] to-[#e47600] active:scale-95 transition-all rounded-full hover:brightness-110 font-black text-black text-xs uppercase tracking-widest cursor-pointer text-center shadow-lg shadow-[#ffbb0d]/10"
-                >
-                  {isEn ? 'Save Vault' : 'सुरक्षित सहेजें'}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* =========================================
-                     ADD UPI MODAL
-         ========================================= */}
-      <AnimatePresence>
-        {showAddUpiModal && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="absolute inset-0 z-50 bg-black/85 flex flex-col justify-end"
-          >
-            <motion.div 
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
-              transition={{ type: 'spring', damping: 25, stiffness: 210 }}
-              className="bg-[#0f141a] border-t border-blue-500/30 rounded-t-3xl max-h-[85%] overflow-hidden flex flex-col shadow-2xl"
-            >
-              <div className="px-5 py-4.5 border-b border-white/5 flex items-center justify-between bg-black/25 shrink-0">
-                <span className="text-[14px] font-black uppercase tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-white to-blue-400">
-                  {isEn ? 'UPI VPA Credential' : 'यूपीआई आईडी क्रेडेंशियल'}
-                </span>
-                <button 
-                  id="wd-add-upi-close"
-                  onClick={() => setShowAddUpiModal(false)}
-                  className="text-[10px] font-black text-neutral-400 hover:text-white px-3 py-1.5 bg-white/5 rounded-full border border-white/10"
-                >
-                  {isEn ? 'Close' : 'बंद करें'}
-                </button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-5 space-y-4 pb-12">
-                {upiError && (
-                  <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-400 font-bold text-xs rounded-xl">
-                    {upiError}
-                  </div>
-                )}
-
-                {/* UPI Address */}
-                <div>
-                  <label className="text-[10px] font-black text-neutral-400 tracking-wider uppercase mb-1.5 block">
-                    {isEn ? 'UPI ID / VPA' : 'UPI ID / VPA'} <span className="text-red-500">*</span>
-                  </label>
-                  <div className="bg-[#090d12] rounded-xl border border-white/5 p-3 flex items-center shadow-inner">
-                    <input 
-                      id="wd-upi-address"
-                      type="text"
-                      value={upiId}
-                      onChange={(e) => setUpiId(e.target.value)}
-                      placeholder={isEn ? 'e.g., mobile@upi or name@ybl' : 'उदा: mobile@upi'}
-                      className="bg-transparent border-none outline-none text-xs text-white w-full font-bold font-mono"
-                    />
-                  </div>
-                </div>
-
-                {/* UPI Holder Name */}
-                <div>
-                  <label className="text-[10px] font-black text-neutral-400 tracking-wider uppercase mb-1.5 block">
-                    {isEn ? 'Account Holder Full Name' : 'खाताधारक का पूरा नाम'} <span className="text-red-500">*</span>
-                  </label>
-                  <div className="bg-[#090d12] rounded-xl border border-white/5 p-3 flex items-center shadow-inner">
-                    <input 
-                      id="wd-upi-holder"
-                      type="text"
-                      value={upiHolderName}
-                      onChange={(e) => setUpiHolderName(e.target.value)}
-                      placeholder={isEn ? 'Enter verified registered bank name' : 'रजिस्टर बैंक का नाम दर्ज करें'}
-                      className="bg-transparent border-none outline-none text-xs text-white w-full font-bold"
-                    />
-                  </div>
-                </div>
-
-                {/* UPI Phone */}
-                <div>
-                  <label className="text-[10px] font-black text-neutral-400 tracking-wider uppercase mb-1.5 block">
-                    {isEn ? 'Mobile Number' : 'मोबाइल नंबर'}
-                  </label>
-                  <div className="bg-[#090d12] rounded-xl border border-white/5 p-3 flex items-center shadow-inner">
-                    <input 
-                      id="wd-upi-phone"
-                      type="tel"
-                      value={upiPhone}
-                      onChange={(e) => setUpiPhone(e.target.value)}
-                      placeholder={isEn ? '10-digit registered number' : '10 अंकों का रजिस्टर्ड नंबर'}
-                      className="bg-transparent border-none outline-none text-xs text-white w-full font-bold font-mono"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Button footer */}
-              <div className="p-4 bg-black/60 border-t border-white/5 shrink-0 flex gap-3.5 z-10">
-                <button 
-                  id="wd-upi-cancel"
-                  onClick={() => setShowAddUpiModal(false)}
-                  className="w-1/2 py-3 bg-white/5 border border-white/10 rounded-full font-extrabold text-neutral-400 text-xs uppercase tracking-widest cursor-pointer text-center hover:bg-white/10"
-                >
-                  {isEn ? 'Cancel' : 'रद्द करें'}
-                </button>
-                <button 
-                  id="wd-upi-save"
-                  onClick={saveUpiDetails}
-                  className="w-1/2 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 active:scale-95 transition-all rounded-full hover:brightness-110 font-black text-white text-xs uppercase tracking-widest cursor-pointer text-center shadow-lg shadow-blue-500/10"
-                >
-                  {isEn ? 'Save UPI' : 'सहेजें'}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* =========================================
-                     HISTORY MODAL
-         ========================================= */}
-      <AnimatePresence>
-        {showHistoryModal && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="absolute inset-0 z-50 bg-black/90 flex flex-col"
-          >
-            {/* Header */}
-            <div className="relative h-15 border-b border-[#ffbb0d]/10 bg-gradient-to-r from-[#170304] via-[#240a0b] to-[#170304] flex items-center justify-between px-3.5 shrink-0">
-              <button 
-                id="wd-history-close"
-                onClick={() => setShowHistoryModal(false)}
-                className="p-1.5 bg-white/5 hover:bg-[#ffbb0d]/10 border border-white/5 hover:border-[#ffbb0d]/20 rounded-xl text-neutral-400 hover:text-white"
-              >
-                <ChevronLeft className="w-5.5 h-5.5" />
-              </button>
-              <span className="text-sm font-black tracking-widest uppercase text-transparent bg-clip-text bg-gradient-to-r from-white to-[#ffbb0d]">
-                {isEn ? 'Withdrawal Audit' : 'निकासी लेखापरीक्षा'}
-              </span>
-              <div className="w-10" />
+            <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center mb-3">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
             </div>
-
-            <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-[#0d0102]">
-              {historyRecords.length > 0 ? (
-                historyRecords.map((rec) => (
-                  <div key={rec.id} className="p-4 bg-gradient-to-b from-[#1a0507] to-[#110102] rounded-2xl border border-white/[0.04] shadow-md flex justify-between items-center transition-all hover:scale-[1.01] hover:border-[#ffbb0d]/10">
-                    <div className="flex flex-col gap-1 text-left">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-[#ffbb0d]/10 text-[#ffbb0d] tracking-widest border border-[#ffbb0d]/10 font-mono">
-                          {rec.id}
-                        </span>
-                        <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">{rec.method === 'BankCard' ? 'BANK CARD' : 'UPI INSTANT'}</span>
-                      </div>
-                      <span className="text-xs text-neutral-300 mt-1 font-mono tracking-wide">{rec.accountDetails}</span>
-                      <span className="text-[9px] text-neutral-500 font-bold font-mono tracking-wider">{rec.time}</span>
-                    </div>
-
-                    <div className="text-right flex flex-col items-end gap-1.5">
-                      <span className="text-lg font-black text-white">₹{rec.amount.toFixed(2)}</span>
-                      {rec.status === 'Processing' && (
-                        <div className="flex items-center gap-1.5 text-orange-400 border border-orange-400/10 px-2.5 py-0.5 rounded-full text-[9px] bg-orange-400/5 font-black tracking-wider uppercase">
-                          <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />
-                          {isEn ? 'Processing' : 'प्रसंस्करण'}
-                        </div>
-                      )}
-                      {rec.status === 'Success' && (
-                        <div className="flex items-center gap-1 text-emerald-400 border border-emerald-500/15 px-2.5 py-0.5 rounded-full text-[9px] bg-emerald-500/5 font-black tracking-wider uppercase">
-                          <Check className="w-3 h-3" />
-                          {isEn ? 'Success' : 'सफलता'}
-                        </div>
-                      )}
-                      {rec.status === 'Failed' && (
-                        <div className="flex items-center gap-1 text-red-400 border border-red-500/15 px-2.5 py-0.5 rounded-full text-[9px] bg-red-400/5 font-black tracking-wider uppercase">
-                          {isEn ? 'Failed' : 'विफल'}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="h-full flex flex-col items-center justify-center py-20 text-center gap-2 text-neutral-600">
-                  <HelpCircle className="w-10 h-10 text-neutral-700" />
-                  <span className="text-xs font-bold leading-relaxed">{isEn ? 'No historic withdrawal transactions found' : 'कोई पूर्व निकासी लेनदेन इतिहास नहीं मिला'}</span>
-                </div>
-              )}
-            </div>
+            <span className="text-white font-medium text-[14px] text-center leading-snug">Refresh<br/>successfully</span>
           </motion.div>
         )}
-      </AnimatePresence>
-
-      {/* CONFETTI SUCCESS POPUP DIALOG */}
-      <AnimatePresence>
-        {showSuccessToast && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="absolute inset-0 z-[100] bg-black/95 flex items-center justify-center p-6 backdrop-blur-sm"
-          >
-            <motion.div 
-              initial={{ scale: 0.85, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.85, opacity: 0 }}
-              className="w-full max-w-[340px] bg-gradient-to-b from-[#2b0f11] to-[#140203] border border-[#ffbb0d]/30 rounded-3xl p-6 flex flex-col items-center text-center shadow-2xl relative overflow-hidden"
-            >
-              <div className="absolute top-0 right-0 w-24 h-24 bg-[#ffbb0d]/5 rounded-full blur-2xl pointer-events-none" />
-              
-              <div className="w-15 h-15 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 mb-4 shadow-[0_4px_15px_rgba(16,185,129,0.2)]">
-                <CheckCircle2 className="w-9 h-9 animate-bounce" />
-              </div>
-
-              <h3 className="text-[14px] font-black text-[#ffbb0d] uppercase tracking-widest mb-1.5">
-                {isEn ? 'Withdrawal Submitted' : 'निकासी सबमिट की गई'}
-              </h3>
-              
-              <div className="text-3xl font-black text-white mt-1 mb-4 drop-shadow-[0_2px_15px_rgba(255,255,255,0.1)]">
-                ₹{successAmount.toFixed(2)}
-              </div>
-
-              <p className="text-xs text-neutral-400 font-semibold leading-relaxed mb-6">
-                {isEn 
-                  ? 'Your withdrawal request has been received on the secure gateway. Audit will be updated on your audit dashboard records'
-                  : 'आपका निकासी आवेदन सुरक्षित गेटवे पर प्राप्त हो गया है। लेखापरीक्षा आपके क्रेडेंशियल इतिहास में अपडेट की जाएगी!'}
-              </p>
-
-              <button 
-                id="wd-success-ok"
-                onClick={() => setShowSuccessToast(false)}
-                className="w-full py-3.5 bg-gradient-to-b from-[#ffe5a4] via-[#ffbb0d] to-[#db9c00] text-black font-black uppercase text-xs tracking-widest rounded-full shadow-lg hover:brightness-110 cursor-pointer active:scale-95 transition-all"
-              >
-                {isEn ? 'Done' : 'पूर्ण'}
-              </button>
-            </motion.div>
-          </motion.div>
+        {showChat && (
+          <SupportChat onClose={() => setShowChat(false)} />
+        )}
+        {showBindModal && (
+          <BindMethodModal 
+            onClose={() => setShowBindModal(false)}
+            initialMethod={paymentMethod}
+            requestedTab={activeTab}
+          />
         )}
       </AnimatePresence>
-
-      {/* Direct Integration with the Support Chat Component */}
-      {showSupportChat && (
-        <SupportChat 
-          onClose={() => setShowSupportChat(false)} 
-          userName={localStorage.getItem('userNickname') || 'Player'}
-        />
-      )}
-
     </div>
+  );
+}
+
+function BindMethodModal({ onClose, initialMethod, requestedTab }: any) {
+  const [methodType, setMethodType] = useState(requestedTab || 'Bank');
+  const [upiId, setUpiId] = useState(initialMethod?.type === 'UPI' ? initialMethod?.upiId : '');
+  const [bankName, setBankName] = useState(initialMethod?.type === 'Bank' ? initialMethod?.bankName : '');
+  const [recipientName, setRecipientName] = useState(initialMethod?.recipientName || '');
+  const [accountNumber, setAccountNumber] = useState(initialMethod?.type === 'Bank' ? initialMethod?.cardNumber : '');
+  const [phone, setPhone] = useState(initialMethod?.phone || '');
+  const [ifsc, setIfsc] = useState(initialMethod?.ifsc || '');
+
+  const [isSelectingBank, setIsSelectingBank] = useState(false);
+  const [searchBank, setSearchBank] = useState('');
+
+  const banks = [
+    "State Bank of India", "Punjab National Bank", "Bank of Baroda", "Canara Bank", 
+    "Union Bank of India", "Indian Bank", "Bank of India", "Central Bank of India", 
+    "Indian Overseas Bank", "UCO Bank", "Bank of Maharashtra", "Punjab & Sind Bank", 
+    "HDFC Bank", "ICICI Bank", "Axis Bank", "Kotak Mahindra Bank", "IndusInd Bank", 
+    "Yes Bank", "IDFC FIRST Bank", "Federal Bank", "South Indian Bank", "Karnataka Bank", 
+    "Karur Vysya Bank", "City Union Bank", "Tamilnad Mercantile Bank", "RBL Bank", 
+    "DCB Bank", "CSB Bank", "Bandhan Bank", "Dhanlaxmi Bank", "Jammu & Kashmir Bank", 
+    "Nainital Bank", "IDBI Bank", "AU Small Finance Bank", "Ujjivan Small Finance Bank", 
+    "Equitas Small Finance Bank", "Jana Small Finance Bank", "ESAF Small Finance Bank", 
+    "Suryoday Small Finance Bank", "Utkarsh Small Finance Bank", "Capital Small Finance Bank", 
+    "North East Small Finance Bank", "Unity Small Finance Bank", "Shivalik Small Finance Bank", 
+    "India Post Payments Bank", "Airtel Payments Bank", "Fino Payments Bank", "Jio Payments Bank", 
+    "NSDL Payments Bank", "Paytm Payments Bank", "HSBC", "Standard Chartered Bank", 
+    "Citibank", "Deutsche Bank", "Barclays Bank", "Bank of America", "JPMorgan Chase Bank", 
+    "BNP Paribas", "Credit Agricole", "DBS Bank India", "Mizuho Bank", "MUFG Bank", 
+    "Sumitomo Mitsui Banking Corporation", "Bank of Ceylon", "Bank of Bahrain & Kuwait", 
+    "Doha Bank", "First Abu Dhabi Bank", "Mashreq Bank", "Emirates NBD", "Qatar National Bank", 
+    "Industrial and Commercial Bank of China", "China Construction Bank", "Krung Thai Bank", 
+    "Shinhan Bank", "Woori Bank", "KEB Hana Bank", "CTBC Bank", "Taiwan Cooperative Bank", 
+    "United Overseas Bank", "OCBC Bank", "ANZ Bank", "Commonwealth Bank of Australia", 
+    "Societe Generale", "NatWest Markets", "Credit Suisse", "UBS", "American Express Banking Corp", 
+    "State Bank of Mauritius", "Sonali Bank", "Habib Bank AG Zurich", "Andhra Pradesh Grameena Vikas Bank", 
+    "Andhra Pragathi Grameena Bank", "Arunachal Pradesh Rural Bank", "Assam Gramin Vikash Bank", 
+    "Bangiya Gramin Vikash Bank", "Baroda UP Bank", "Baroda Rajasthan Kshetriya Gramin Bank", 
+    "Chaitanya Godavari Grameena Bank", "Dakshin Bihar Gramin Bank", "Ellaquai Dehati Bank", 
+    "Himachal Pradesh Gramin Bank", "J&K Grameen Bank", "Jharkhand Rajya Gramin Bank", 
+    "Karnataka Gramin Bank", "Karnataka Vikas Grameena Bank", "Kerala Gramin Bank", 
+    "Madhya Pradesh Gramin Bank", "Madhyanchal Gramin Bank", "Maharashtra Gramin Bank", 
+    "Manipur Rural Bank", "Meghalaya Rural Bank", "Mizoram Rural Bank", "Nagaland Rural Bank", 
+    "Odisha Gramya Bank", "Paschim Banga Gramin Bank", "Punjab Gramin Bank", "Rajasthan Marudhara Gramin Bank", 
+    "Saptagiri Grameena Bank", "Sarva Haryana Gramin Bank", "Tamil Nadu Grama Bank", 
+    "Telangana Grameena Bank", "Tripura Gramin Bank", "Utkal Grameen Bank", "Uttarbanga Kshetriya Gramin Bank", 
+    "Uttarakhand Gramin Bank", "Uttar Bihar Gramin Bank", "Vidharbha Konkan Gramin Bank", 
+    "Chhattisgarh Rajya Gramin Bank", "Saraswat Co-operative Bank", "Cosmos Co-operative Bank", 
+    "Shamrao Vithal Co-operative Bank", "Abhyudaya Co-operative Bank", "Bharat Co-operative Bank", 
+    "Janata Sahakari Bank", "NKGSB Co-operative Bank", "TJSB Sahakari Bank", "Kalupur Commercial Co-operative Bank", 
+    "Mehsana Urban Co-operative Bank", "Rajkot Nagarik Sahakari Bank", "Ahmedabad Mercantile Co-operative Bank", 
+    "Thane Bharat Sahakari Bank", "Apna Sahakari Bank", "Citizen Credit Co-operative Bank", 
+    "Punjab State Cooperative Bank", "Haryana State Cooperative Apex Bank", "Gujarat State Cooperative Bank", 
+    "Maharashtra State Cooperative Bank", "Kerala State Cooperative Bank", "Odisha State Cooperative Bank", 
+    "Karnataka State Cooperative Apex Bank", "Tamil Nadu State Apex Cooperative Bank", 
+    "Uttar Pradesh Cooperative Bank", "Rajasthan State Cooperative Bank", "Bihar State Cooperative Bank", 
+    "Madhya Pradesh Rajya Sahakari Bank"
+  ];
+
+  const filteredBanks = banks.filter(b => b.toLowerCase().includes(searchBank.toLowerCase()));
+
+  const handleSave = async () => {
+    const user = auth.currentUser;
+    if (!user) return;
+    
+    try {
+      const data = methodType === 'UPI' 
+        ? { type: 'UPI', upiId, recipientName, phone }
+        : { type: 'Bank', bankName, cardNumber: accountNumber, recipientName, phone, ifsc };
+        
+      await updateDoc(doc(db, 'users', user.uid), {
+        paymentMethod: data
+      });
+      alert('Method saved');
+      onClose();
+    } catch (e) {
+      console.error(e);
+      alert('Failed to save');
+    }
+  };
+
+  if (isSelectingBank) {
+    return (
+      <div className="fixed inset-0 z-[70] bg-[#3d0f10] font-sans flex flex-col mx-auto max-w-[410px]">
+        <div className="sticky top-0 w-full h-[48px] bg-[#3d0f10] flex items-center px-3 z-20">
+          <button onClick={() => setIsSelectingBank(false)} className="h-10 w-10 flex items-center justify-start text-white cursor-pointer active:scale-90 transition-transform">
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+          <div className="flex-1 text-center text-white font-medium text-[16px] tracking-wide -ml-2">Choose a bank</div>
+        </div>
+        
+        <div className="px-4 py-2 border-b border-[#3d0f10]">
+          <div className="flex items-center gap-2 text-white/50 mb-1.5">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFC107" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <input 
+              type="text" 
+              placeholder="Search bank" 
+              value={searchBank}
+              onChange={(e) => setSearchBank(e.target.value)}
+              className="bg-transparent border-none outline-none text-[#FFD700] placeholder:text-white/40 text-[14px] font-medium w-full"
+            />
+          </div>
+          <div className="text-white/60 text-[13px]">Choose a bank</div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-4">
+          {filteredBanks.map((bank, i) => (
+            <div 
+              key={i} 
+              onClick={() => { setBankName(bank); setIsSelectingBank(false); }}
+              className="py-3 border-b border-white/5 text-white/80 font-medium text-[14px] active:bg-white/5 cursor-pointer"
+            >
+              {bank}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} className="fixed inset-0 z-[60] bg-[#3d0f10] font-sans flex flex-col mx-auto max-w-[410px]">
+      <div className="sticky top-0 w-full h-[48px] bg-[#3d0f10] flex items-center px-3 z-20">
+        <button onClick={onClose} className="h-10 w-10 flex items-center justify-start text-white cursor-pointer active:scale-90 transition-transform">
+          <ChevronLeft className="h-5 w-5" />
+        </button>
+        <div className="flex-1 text-center text-white font-medium text-[16px] tracking-wide -ml-2">
+          {methodType === 'Bank' ? 'Add a bank account number' : 'Add UPI method'}
+        </div>
+      </div>
+      
+      <div className="flex-1 overflow-y-auto px-4 py-3">
+        <div className="bg-[#3d0f10] rounded-[8px] py-2 px-2.5 flex items-center gap-1.5 border border-[#FF4148]/20 mb-4 overflow-hidden">
+          <svg className="w-3.5 h-3.5 text-[#FF4148] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+          <span className="text-[#FF4148]/90 text-[10.5px] whitespace-nowrap font-medium tracking-tight">To ensure the safety of your funds, please bind your bank account</span>
+        </div>
+
+        {methodType === 'Bank' ? (
+          <div className="space-y-4">
+            <div>
+              <div className="flex items-center gap-1.5 mb-1.5 text-white">
+                <Landmark className="w-4 h-4 text-[#FFD700]" />
+                <span className="text-[13px] font-bold">Choose a bank</span>
+              </div>
+              <div 
+                onClick={() => setIsSelectingBank(true)}
+                className="w-full bg-[#FFC107] rounded-[8px] p-3 flex items-center justify-between shadow-sm cursor-pointer active:scale-[0.98] transition-transform text-[#2c1012]"
+              >
+                <span className="font-bold text-[14px]">{bankName || 'Please select a bank'}</span>
+                <ChevronRight className="w-4 h-4 opacity-80" />
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center gap-1.5 mb-1.5 text-white">
+                <svg className="w-4 h-4 text-[#FFD700]" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+                <span className="text-[13px] font-bold">Full recipient's name</span>
+              </div>
+              <input type="text" value={recipientName} onChange={e => setRecipientName(e.target.value)} placeholder="Please enter the recipient's name" className="w-full bg-[#2c0808] border-none text-white rounded-[8px] p-3 text-[14px] placeholder:text-white/30 focus:outline-none" />
+            </div>
+
+            <div>
+              <div className="flex items-center gap-1.5 mb-1.5 text-white">
+                <CreditCard className="w-4 h-4 text-[#FFD700]" />
+                <span className="text-[13px] font-bold">Bank account number</span>
+              </div>
+              <input type="text" value={accountNumber} onChange={e => setAccountNumber(e.target.value)} placeholder="Please enter your bank account number" className="w-full bg-[#2c0808] border-none text-white rounded-[8px] p-3 text-[14px] placeholder:text-white/30 focus:outline-none" />
+            </div>
+
+            <div>
+              <div className="flex items-center gap-1.5 mb-1.5 text-white">
+                <svg className="w-4 h-4 text-[#FFD700]" viewBox="0 0 24 24" fill="currentColor"><path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z"/></svg>
+                <span className="text-[13px] font-bold">Phone number</span>
+              </div>
+              <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="Please enter your phone number" className="w-full bg-[#2c0808] border-none text-white rounded-[8px] p-3 text-[14px] placeholder:text-white/30 focus:outline-none" />
+            </div>
+
+            <div>
+              <div className="flex items-center gap-1.5 mb-1.5 text-white">
+                <svg className="w-4 h-4 text-[#FFD700]" viewBox="0 0 24 24" fill="currentColor"><path d="M21 10h-8.35A5.99 5.99 0 0 0 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6a5.99 5.99 0 0 0 5.65-4H14v2h4v-2h3v-4zm-14 4c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>
+                <span className="text-[13px] font-bold">IFSC code</span>
+              </div>
+              <input type="text" value={ifsc} onChange={e => setIfsc(e.target.value)} placeholder="Please enter IFSC code" className="w-full bg-[#2c0808] border-none text-white rounded-[8px] p-3 text-[14px] placeholder:text-white/30 focus:outline-none" />
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <div className="flex items-center gap-1.5 mb-1.5 text-white">
+                <CreditCard className="w-4 h-4 text-[#FFD700]" />
+                <span className="text-[13px] font-bold">UPI ID</span>
+              </div>
+              <input type="text" value={upiId} onChange={e => setUpiId(e.target.value)} placeholder="Please enter your UPI ID" className="w-full bg-[#2c0808] border-none text-white rounded-[8px] p-3 text-[14px] placeholder:text-white/30 focus:outline-none" />
+            </div>
+
+            <div>
+              <div className="flex items-center gap-1.5 mb-1.5 text-white">
+                <svg className="w-4 h-4 text-[#FFD700]" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+                <span className="text-[13px] font-bold">Full recipient's name</span>
+              </div>
+              <input type="text" value={recipientName} onChange={e => setRecipientName(e.target.value)} placeholder="Please enter the recipient's name" className="w-full bg-[#2c0808] border-none text-white rounded-[8px] p-3 text-[14px] placeholder:text-white/30 focus:outline-none" />
+            </div>
+
+            <div>
+              <div className="flex items-center gap-1.5 mb-1.5 text-white">
+                <svg className="w-4 h-4 text-[#FFD700]" viewBox="0 0 24 24" fill="currentColor"><path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z"/></svg>
+                <span className="text-[13px] font-bold">Phone number</span>
+              </div>
+              <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="Please enter your phone number" className="w-full bg-[#2c0808] border-none text-white rounded-[8px] p-3 text-[14px] placeholder:text-white/30 focus:outline-none" />
+            </div>
+          </div>
+        )}
+
+        <div className="mt-6 mb-4">
+          <button 
+            onClick={handleSave} 
+            disabled={methodType === 'UPI' ? !upiId : !accountNumber || !bankName}
+            className={`w-full py-3.5 rounded-[24px] font-bold tracking-wider text-[15px] transition-all active:scale-95 ${
+              (methodType === 'UPI' ? upiId : (accountNumber && bankName)) 
+                ? 'bg-[#2c0808] text-white cursor-pointer hover:bg-[#1a0505]' 
+                : 'bg-[#2c0808]/50 text-white/30 cursor-not-allowed'
+            }`}
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    </motion.div>
   );
 }

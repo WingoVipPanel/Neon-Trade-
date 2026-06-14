@@ -76,6 +76,7 @@ import DepositScreen from './components/DepositScreen';
 import WithdrawScreen from './components/WithdrawScreen';
 import SupportChat from './components/SupportChat';
 import AdminPanelView from './components/AdminPanelView';
+import MobileAdminPanelView from './components/MobileAdminPanelView';
 import VipLevelsView from './components/VipLevelsView';
 import InvitationBonusView from './components/InvitationBonusView';
 import InviteWheelView from './components/InviteWheelView';
@@ -1448,64 +1449,8 @@ export default function App() {
     const timerInterval = setInterval(updateLocalTimers, 1000);
     updateLocalTimers();
 
-    // 2. API Record Polling (Direct from External if possible, or fallback)
-    const syncWithExternal = async () => {
-      const rooms: ('30s' | '1m' | '3m' | '5m')[] = ['30s', '1m', '3m', '5m'];
-      const urlMap = {
-        '30s': 'https://draw.ar-lottery01.com/WinGo/WinGo_30S/GetHistoryIssuePage.json',
-        '1m': 'https://draw.ar-lottery01.com/WinGo/WinGo_1M/GetHistoryIssuePage.json',
-        '3m': 'https://draw.ar-lottery01.com/WinGo/WinGo_3M/GetHistoryIssuePage.json',
-        '5m': 'https://draw.ar-lottery01.com/WinGo/WinGo_5M/GetHistoryIssuePage.json',
-      };
-
-      for (const room of rooms) {
-        try {
-          const targetUrl = urlMap[room];
-          // Try direct fetch first, fallback to allorigins proxy if blocked by CORS
-          let res: Response | null = await fetch(targetUrl).catch(() => null);
-          if (!res || !res.ok) {
-            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
-            res = await fetch(proxyUrl);
-          }
-          
-          if (!res.ok) continue;
-          const d = await res.json();
-          const list = d?.data?.list || [];
-          if (list.length > 0) {
-            setWingoHistory(prev => {
-              const currentHistory = prev[room] || [];
-              const lastLocalPeriod = currentHistory[0]?.period;
-              
-              const newRecords = list.map((item: any) => ({
-                period: item.issueNumber,
-                number: parseInt(item.number),
-                color: item.color.toLowerCase(), // 'red', 'green', 'red,violet' etc
-                size: parseInt(item.number) >= 5 ? 'Big' : 'Small'
-              }));
-
-              if (newRecords[0].period !== lastLocalPeriod) {
-                const merged = [...newRecords, ...currentHistory];
-                const unique = Array.from(new Map(merged.map(item => [item.period, item])).values())
-                  .sort((a: any, b: any) => b.period.localeCompare(a.period))
-                  .slice(0, 500);
-                
-                return { ...prev, [room]: unique as any };
-              }
-              return prev;
-            });
-          }
-        } catch (e) {
-          // console.warn(`Client-side fetch failed for ${room} (likely CORS). Reverting to socket/firestore.`);
-        }
-      }
-    };
-
-    const apiInterval = setInterval(syncWithExternal, 10000);
-    syncWithExternal(); // Initial sync
-
     return () => {
       clearInterval(timerInterval);
-      clearInterval(apiInterval);
     };
   }, []);
 
@@ -1605,123 +1550,34 @@ export default function App() {
     }
   });
 
-  // Load and sync user-specific wingo_history from Firestore or Backup on mount / login change
+  // Load and sync GLOBAL wingo_history from Firestore real-time using onSnapshot
   useEffect(() => {
-    const syncUserHistory = async () => {
-      // 1. If not logged in, load/fetch global history
-      if (!isLoggedIn || !auth.currentUser || !db) {
-        try {
-          const saved = localStorage.getItem('wingo_history');
-          if (saved) {
-            setWingoHistory(JSON.parse(saved));
-          } else {
-            const newHistoryState: any = { '30s': [], '1m': [], '3m': [], '5m': [] };
-            let hasData = false;
-            const q = query(
-              collection(db, 'wingo_history'),
-              orderBy('serverTimestamp', 'desc'),
-              limit(4000)
-            );
-            const snap = await getDocs(q);
-            snap.forEach(docSnapshot => {
-              const data = docSnapshot.data();
-              const room = data.room;
-              if (room && newHistoryState[room] && newHistoryState[room].length < 500) {
-                newHistoryState[room].push({
-                  period: data.period,
-                  number: data.number,
-                  color: data.color,
-                  size: data.size,
-                  timestamp: data.serverTimestamp?.toDate?.()?.toISOString() || new Date().toISOString()
-                });
-                hasData = true;
-              }
-            });
-            if (hasData) {
-              setWingoHistory(newHistoryState);
-              localStorage.setItem('wingo_history', JSON.stringify(newHistoryState));
-            }
-          }
-        } catch (e) {
-          console.error("Error restoring global log-out history:", e);
-        }
-        return;
-      }
+    if (!db) return;
 
-      const uid = auth.currentUser.uid;
+    const ROOMS = ['30s', '1m', '3m', '5m'];
+    const unsubscribes: (() => void)[] = [];
 
-      // 2. If logged in, first perform instant UI restoration from user-key localStorage
-      try {
-        const cached = localStorage.getItem(`wingo_history_${uid}`);
-        if (cached) {
-          setWingoHistory(JSON.parse(cached));
-        }
-      } catch (e) {
-        console.error("Error loading cached user-specific history:", e);
-      }
-
-      // 3. Fetch user's authoritative 500-result history backup from Firestore
-      try {
-        const docRef = doc(db, 'user_wingo_history', uid);
-        const docSnap = await getDocWithRetry(docRef);
-
+    ROOMS.forEach(room => {
+      const roomDoc = doc(db, 'globalResults', room);
+      const unsub = onSnapshot(roomDoc, (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
-          if (data && data.wingoHistory) {
-            setWingoHistory(data.wingoHistory);
-            localStorage.setItem(`wingo_history_${uid}`, JSON.stringify(data.wingoHistory));
-            localStorage.setItem('wingo_history', JSON.stringify(data.wingoHistory));
-          }
-        } else {
-          // If no Firestore backup exists yet, back up the current state of history to Firestore for this user
-          const current = JSON.parse(localStorage.getItem('wingo_history') || '{}');
-          const isHistoryEmpty = !current || Object.values(current).every((h: any) => h.length === 0);
-          if (!isHistoryEmpty) {
-            const sanitized = sanitizeHistoryForFirestore(current);
-            await setDocWithRetry(doc(db, 'user_wingo_history', uid), {
-              userId: uid,
-              wingoHistory: sanitized,
-              updatedAt: new Date().toISOString()
+          if (data && data.history) {
+            setWingoHistory(prev => {
+              const newState = { ...prev, [room]: data.history };
+              localStorage.setItem('wingo_history', JSON.stringify(newState));
+              return newState;
             });
           }
         }
-      } catch (err) {
-        console.error("Failed to sync user-specific Wingo history from Firestore:", err);
-      }
+      });
+      unsubscribes.push(unsub);
+    });
+
+    return () => {
+      unsubscribes.forEach(unsub => unsub());
     };
-
-    syncUserHistory();
-  }, [isLoggedIn, db]);
-
-  // Save and backup wingoHistory to localStorage & Firestore on update
-  useEffect(() => {
-    const isHistoryEmpty = Object.values(wingoHistory).every((h: any) => h.length === 0);
-    if (isHistoryEmpty) return;
-
-    // A. Always sync to global localStorage
-    localStorage.setItem('wingo_history', JSON.stringify(wingoHistory));
-
-    // B. If logged in, sync to user backup and save to Firestore (debounced to save write operations)
-    if (isLoggedIn && auth.currentUser) {
-      const uid = auth.currentUser.uid;
-      localStorage.setItem(`wingo_history_${uid}`, JSON.stringify(wingoHistory));
-
-      const timer = setTimeout(() => {
-        if (db && auth.currentUser && auth.currentUser.uid === uid) {
-          const sanitized = sanitizeHistoryForFirestore(wingoHistory);
-          setDocWithRetry(doc(db, 'user_wingo_history', uid), {
-            userId: uid,
-            wingoHistory: sanitized,
-            updatedAt: new Date().toISOString()
-          }).catch(err => {
-            console.error("Failed to back up wingoHistory to user_wingo_history in Firestore:", err);
-          });
-        }
-      }, 3500); // 3.5 seconds debounce to protect write quota limit
-
-      return () => clearTimeout(timer);
-    }
-  }, [wingoHistory, isLoggedIn]);
+  }, [db]);
   const [myWingoBets, setMyWingoBets] = useState<{ [key: string]: { period: string; number?: number; color?: string; size?: string; betAmount: number; winLoss: 'Win' | 'Loss' | '-'; timestamp: string; userChoice: string | number; resolved: boolean }[] }>({ '30s': [], '1m': [], '3m': [], '5m': [] });
   const [expandedBetKey, setExpandedBetKey] = useState<string | null>(null);
 
@@ -1957,18 +1813,23 @@ export default function App() {
        if (active) setSocketConnected(false);
     });
     socket.on('connect_error', (err) => {
-       console.error('Socket connection error detail:', err.message, err);
+       if (err.message !== 'xhr poll error' && err.message !== 'websocket error') {
+         console.error('Socket connection error detail:', err.message);
+       }
        if (active) setSocketConnected(false);
     });
 
     socket.on('initial_data', (roomData: any) => {
        if (!active) return;
-       // initial layout
+       // initial layout (fallback to socket data if Firestore snapshot is unavailable due to quota)
        setWingoHistory(prev => {
            let state = { ...prev };
            for (const room of ['30s', '1m', '3m', '5m']) {
-               if (roomData[room]?.history) {
-                   state[room] = roomData[room].history;
+               if (roomData[room]?.history && roomData[room].history.length > 0) {
+                   // Only use socket data if we haven't loaded recent data yet from Firestore
+                   if (!state[room] || state[room].length === 0) {
+                       state[room] = roomData[room].history;
+                   }
                }
            }
            return state;
@@ -2075,72 +1936,51 @@ export default function App() {
            if (lastAlert) setWingoWinningsAlert(lastAlert);
        }
 
+       // Resolve the corresponding bet in myWingoBets in real-time
+       setMyWingoBets(prev => {
+           const roomBets = prev[room] || [];
+           const updatedBets = roomBets.map(b => {
+               if (b.period === result.period && !b.resolved) {
+                   let userWon = false;
+                   const rNum = result.number;
+                   const rCol = result.color;
+                   const rSize = result.size;
+                   const opt = b.userChoice;
+
+                   if (typeof opt === 'number') {
+                       if (opt === rNum) userWon = true;
+                   } else if (opt === 'Green') {
+                       if (rCol === 'Green' || rCol === 'Green+Violet') userWon = true;
+                   } else if (opt === 'Red') {
+                       if (rCol === 'Red' || rCol === 'Red+Violet') userWon = true;
+                   } else if (opt === 'Violet') {
+                       if (['Violet','Green+Violet','Red+Violet'].includes(rCol)) userWon = true;
+                   } else if (opt === 'Big') {
+                       if (rSize === 'Big') userWon = true;
+                   } else if (opt === 'Small') {
+                       if (rSize === 'Small') userWon = true;
+                   }
+
+                   return {
+                       ...b,
+                       resolved: true,
+                       winLoss: userWon ? 'Win' as const : 'Loss' as const,
+                       number: rNum,
+                       color: rCol,
+                       size: rSize
+                   };
+               }
+               return b;
+           });
+           return { ...prev, [room]: updatedBets };
+       });
+
+       // Fallback for global history update in case Firestore quota is exceeded
        setWingoHistory(prev => {
            const existing = prev[room] || [];
-           const pendingLocal = [] as any;
-
-           // Resolve the corresponding bet in myWingoBets in real-time
-           setMyWingoBets(prev => {
-               const roomBets = prev[room] || [];
-               const updatedBets = roomBets.map(b => {
-                   if (b.period === result.period && !b.resolved) {
-                       let userWon = false;
-                       const rNum = result.number;
-                       const rCol = result.color;
-                       const rSize = result.size;
-                       const opt = b.userChoice;
-
-                       if (typeof opt === 'number') {
-                           if (opt === rNum) userWon = true;
-                       } else if (opt === 'Green') {
-                           if (rCol === 'Green' || rCol === 'Green+Violet') userWon = true;
-                       } else if (opt === 'Red') {
-                           if (rCol === 'Red' || rCol === 'Red+Violet') userWon = true;
-                       } else if (opt === 'Violet') {
-                           if (['Violet','Green+Violet','Red+Violet'].includes(rCol)) userWon = true;
-                       } else if (opt === 'Big') {
-                           if (rSize === 'Big') userWon = true;
-                       } else if (opt === 'Small') {
-                           if (rSize === 'Small') userWon = true;
-                       }
-
-                       return {
-                           ...b,
-                           resolved: true,
-                           winLoss: userWon ? 'Win' as const : 'Loss' as const,
-                           number: rNum,
-                           color: rCol,
-                           size: rSize
-                       };
-                   }
-                   return b;
-               });
-               return { ...prev, [room]: updatedBets };
-           });
-           const pendingItems = pendingLocal.map(b => ({
-              period: b.period,
-              number: -1, 
-              color: 'Green' as any,
-              size: 'Big' as any,
-              betAmount: b.betAmount,
-              winLoss: '-', 
-              timestamp: b.timestamp,
-              userChoice: b.userChoice
-           })).sort((a,b) => parseInt(b.period) - parseInt(a.period));
-
-           const matchedBet = localBetsRef.current.find(b => b.room === room && b.period === result.period);
-           const newRecord = {
-               ...result,
-               betAmount: matchedBet?.betAmount,
-               winLoss: matchedBet?.winLoss,
-               timestamp: matchedBet?.timestamp || new Date().toISOString(),
-               userChoice: matchedBet?.userChoice
-           };
-
-           // Filter out pending items from existing that have just resolved
-           const filteredExisting = existing.filter(e => e.period !== result.period && e.number !== -1);
-
-           return { ...prev, [room]: [...pendingItems, newRecord, ...filteredExisting].slice(0, 500) };
+           // Insert new record at the start and deduplicate
+           const updated = [result, ...existing.filter((h: any) => h.period !== result.period)].sort((a,b) => b.period.localeCompare(a.period)).slice(0, 500);
+           return { ...prev, [room]: updated };
        });
 
     });
@@ -2568,7 +2408,7 @@ export default function App() {
   }
 
   if (isLoggedIn && isAdmin && showAdminView) {
-    return <AdminPanelView onLogout={handleLogout} onToggleView={() => setShowAdminView(false)} />;
+    return <MobileAdminPanelView onLogout={handleLogout} onToggleView={() => setShowAdminView(false)} />;
   }
 
   return (
@@ -4156,13 +3996,8 @@ export default function App() {
                         {/* Red capsule positive action button resembling screenshot */}
                         <button 
                           onClick={() => {
-                            setBalance(prev => prev + 500);
-                            setLobbyToast({
-                              type: 'success',
-                              text: selectedLang === 'en' 
-                                ? 'Loaded ₹500 successfully via VIP Express Deposit!' 
-                                : 'वीआईपी एक्सप्रेस डिपॉजिट द्वारा ₹500 सफलतापूर्वक लोड किए गए!'
-                            });
+                            playWingoSound(clickAudioRef);
+                            setShowDepositScreen(true);
                           }}
                           className="h-[21px] w-[21px] rounded-full bg-gradient-to-b from-[#ff3e3e] to-[#c61d1d] hover:brightness-110 active:scale-90 transition flex items-center justify-center text-white font-black text-xs select-none shadow-md cursor-pointer border border-[#ff8888]/20"
                           title="Instant top-up"
@@ -4855,7 +4690,7 @@ export default function App() {
                             }}
                           >
                             {isBettingDisabled && (
-                                <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/60 backdrop-blur-[2px] rounded-[28px] pointer-events-auto cursor-not-allowed">
+                                <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/80 rounded-[28px] pointer-events-auto cursor-not-allowed">
                                     <div className="flex gap-3">
                                         {String(activeTimer).padStart(2, '0').split('').map((digit, i) => (
                                             <div key={i} className="bg-[#5c1c1e] text-[#FFD700] text-7xl font-black w-24 h-36 flex items-center justify-center rounded-[20px]">
@@ -5669,7 +5504,7 @@ export default function App() {
                           id: '30s', 
                           name: selectedLang === 'en' ? 'Wingo 30s' : 'विंगो ३० सेकंड', 
                           time: '30S', 
-                          image: 'https://i.ibb.co/C3QHG3cZ/014807811-35339-file-20260504134807805.webp',
+                          image: 'https://i.ibb.co/twP5vVhH/file-0000000052447207a3365bdca980061e.png',
                           tag: selectedLang === 'en' ? 'Super Fast' : 'अति तीव्र',
                           desc: 'Speed Draw 30s',
                           cat: 'wingo'
@@ -5678,7 +5513,7 @@ export default function App() {
                           id: '1m', 
                           name: selectedLang === 'en' ? 'Wingo 1Min' : 'विंगो १ मिनट', 
                           time: '1M', 
-                          image: 'https://i.ibb.co/9m4N2qGW/014823899-35341-file-20260504134823893-1.webp',
+                          image: 'https://i.ibb.co/2QQr71m/file-000000008c6071faa26fa7f582b22667.png',
                           tag: selectedLang === 'en' ? 'Most Loved' : 'लोकप्रिय',
                           desc: 'Speed Room 1M',
                           cat: 'wingo'
@@ -5687,7 +5522,7 @@ export default function App() {
                           id: '3m', 
                           name: selectedLang === 'en' ? 'Wingo 3Min' : 'विंगो ३ मिनट', 
                           time: '3M', 
-                          image: 'https://i.ibb.co/TxGxvywf/014841344-35343-file-20260504134841337.webp',
+                          image: 'https://i.ibb.co/9HMwVbML/file-00000000d9a07206a1f56f9c5ed5a935.png',
                           tag: selectedLang === 'en' ? 'Classic Room' : 'क्लासिक चयन',
                           desc: 'Standard Slices 3M',
                           cat: 'wingo'
@@ -5696,7 +5531,7 @@ export default function App() {
                           id: '5m', 
                           name: selectedLang === 'en' ? 'Wingo 5Min' : 'विंगो ५ मिनट', 
                           time: '5M', 
-                          image: 'https://i.ibb.co/dsMvP5Ng/014856938-35345-file-20260504134856932.webp',
+                          image: 'https://i.ibb.co/WNQZyCdw/file-0000000073407209b9bf684dc8b4aeb5.png',
                           tag: selectedLang === 'en' ? 'Jackpot Draw' : 'जैकपॉट ड्रा',
                           desc: 'Mega Jackpot 5M',
                           cat: 'wingo'
@@ -5741,10 +5576,10 @@ export default function App() {
                             setWingoWinningsAlert(null);
                             setWingoOuterMultiplier(1);
                           }}
-                          className={`group bg-[#3d0f10] border border-white/5 rounded-2xl overflow-hidden relative flex flex-col shadow-md transition cursor-pointer ${
+                          className={`group bg-[#3d0f10] border border-white/5 rounded-2xl overflow-hidden relative flex flex-col shadow-md cursor-pointer transition-all duration-300 ${
                             game.isComingSoon 
                               ? 'opacity-70 grayscale-[25%] hover:border-amber-500/10 active:scale-100' 
-                              : 'hover:border-red-500/25 active:scale-98'
+                              : 'hover:border-red-500/25 active:scale-95 hover:scale-[1.04] hover:-translate-y-1 hover:shadow-2xl hover:shadow-black/50 hover:z-10'
                           }`}
                         >
                           {/* Image Box - Changed aspect to aspect-[3/4] to render full height of portrait cards */}
@@ -5752,7 +5587,7 @@ export default function App() {
                             <img
                               src={game.image}
                               alt={game.name}
-                              className="w-full h-full object-cover transition duration-300 group-hover:scale-102"
+                              className={`w-full h-full object-cover transition duration-300 group-hover:scale-[1.05] ${game.id.includes('mines') ? 'scale-[1.03]' : ''}`}
                               referrerPolicy="no-referrer"
                             />
                             {/* Inner ambient shadows and highlights */}
@@ -6203,26 +6038,43 @@ export default function App() {
           {!activeWingoRoom && !showLanguageScreen && (
             <div className="fixed bottom-0 left-1/2 -translate-x-1/2 z-40 w-full max-w-[410px] h-[78px] bg-transparent select-none flex items-end">
               
-              {/* Curved left base wing - Maroon red with high-rising rounded corner */}
+              {/* Curved left base wing */}
               <div 
-                className="absolute left-0 bottom-0 h-[62px] w-[39.5%] bg-[#22090a] rounded-tr-[36px] border-t border-r border-[#441113]/70 z-10 shadow-[0_-4px_16px_rgba(0,0,0,0.55)]"
+                className="absolute left-0 bottom-0 h-[65px] w-[50.2%] bg-[#1a1a1c] border-t-2 border-[#333]/50 rounded-tr-[50px] z-10 shadow-[0_-4px_16px_rgba(0,0,0,0.6)]"
               />
 
-              {/* Curved right base wing - Maroon red with high-rising rounded corner */}
+              {/* Curved right base wing */}
               <div 
-                className="absolute right-0 bottom-0 h-[62px] w-[39.5%] bg-[#22090a] rounded-tl-[36px] border-t border-l border-[#441113]/70 z-10 shadow-[0_-4px_16px_rgba(0,0,0,0.55)]"
+                className="absolute right-0 bottom-0 h-[65px] w-[50.2%] bg-[#1a1a1c] border-t-2 border-[#333]/50 rounded-tl-[50px] z-10 shadow-[0_-4px_16px_rgba(0,0,0,0.6)]"
               />
 
-              {/* Central premium red U-shaped cup plate holding 'Wheel' name */}
+              {/* Central red flared background */}
               <div 
-                className="absolute left-1/2 -translate-x-1/2 bottom-0 w-[96px] h-[48px] rounded-b-[24px] rounded-t-[4px] border-t-2 border-[#ff3939] z-15 flex items-end justify-center pb-1.5 shadow-[0_-2px_12px_rgba(222,34,34,0.4)]"
-                style={{
-                  background: 'linear-gradient(180deg, #de1e1e 0%, #4a0202 100%)'
-                }}
+                className="absolute left-1/2 -translate-x-1/2 bottom-[2px] w-[120px] h-[70px] z-15 pointer-events-none flex justify-center"
               >
-                <span className="text-[10px] font-black text-white uppercase tracking-wider leading-none select-none drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]">
-                  {t.wheelTab}
-                </span>
+                <svg className="absolute inset-0 w-full h-full drop-shadow-[0_4px_12px_rgba(220,20,20,0.4)]" viewBox="0 0 120 70" fill="none">
+                  <defs>
+                    <linearGradient id="flareGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#f01a1a" />
+                      <stop offset="40%" stopColor="#b30000" />
+                      <stop offset="100%" stopColor="#3d0000" />
+                    </linearGradient>
+                    <linearGradient id="flareStroke" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#ff7777" />
+                      <stop offset="100%" stopColor="#770000" />
+                    </linearGradient>
+                  </defs>
+                  <path d="M 0 15 
+                           C 20 18, 28 68, 40 68 
+                           L 80 68 
+                           C 92 68, 100 18, 120 15 
+                           C 100 28, 85 30, 60 30 
+                           C 35 30, 20 28, 0 15 Z" 
+                        fill="url(#flareGrad)" 
+                        stroke="url(#flareStroke)" 
+                        strokeWidth="1" 
+                        strokeLinecap="round" />
+                </svg>
               </div>
 
               {/* Dynamic Navbar item containers */}
@@ -6250,7 +6102,7 @@ export default function App() {
                         className="h-[26px] w-[26px] object-contain select-none" 
                         referrerPolicy="no-referrer"
                       />
-                      <span className="text-[10px] font-black uppercase tracking-tight text-[#ff3a3a] leading-none mt-1">{t.homeTab}</span>
+                      <span className="text-[12px] font-medium text-[#ff3a3a] leading-none mt-1 capitalize">{t.homeTab}</span>
                     </div>
                   ) : (
                     <div className="flex flex-col items-center justify-center py-1 text-neutral-500 hover:text-neutral-400 transition-colors w-full h-[52px]">
@@ -6260,7 +6112,7 @@ export default function App() {
                         className="h-[24px] w-[24px] object-contain select-none opacity-50 hover:opacity-80 transition-opacity" 
                         referrerPolicy="no-referrer"
                       />
-                      <span className="text-[10px] font-bold uppercase tracking-tight text-neutral-500 leading-none mt-1.5">{t.homeTab}</span>
+                      <span className="text-[12px] font-medium text-neutral-500 leading-none mt-1.5 capitalize">{t.homeTab}</span>
                     </div>
                   )}
                 </button>
@@ -6289,7 +6141,7 @@ export default function App() {
                         className="h-[26px] w-[26px] object-contain select-none" 
                         referrerPolicy="no-referrer"
                       />
-                      <span className="text-[10px] font-black uppercase tracking-tight text-[#ff3a3a] leading-none mt-1">{t.promoTab}</span>
+                      <span className="text-[12px] font-medium text-[#ff3a3a] leading-none mt-1 capitalize">{t.promoTab}</span>
                     </div>
                   ) : (
                     <div className="flex flex-col items-center justify-center py-1 text-neutral-500 hover:text-neutral-400 transition-colors w-full h-[52px]">
@@ -6299,7 +6151,7 @@ export default function App() {
                         className="h-[24px] w-[24px] object-contain select-none opacity-50 hover:opacity-80 transition-opacity" 
                         referrerPolicy="no-referrer"
                       />
-                      <span className="text-[10px] font-bold uppercase tracking-tight text-neutral-500 leading-none mt-1.5">{t.promoTab}</span>
+                      <span className="text-[12px] font-medium text-neutral-500 leading-none mt-1.5 capitalize">{t.promoTab}</span>
                     </div>
                   )}
                 </button>
@@ -6311,17 +6163,20 @@ export default function App() {
                     playWingoSound(clickAudioRef);
                     setCurrentTab('wheel');
                   }}
-                  className="relative flex flex-col items-center justify-start cursor-pointer active:scale-98 w-[76px] shrink-0"
+                  className="relative flex flex-col items-center justify-end pb-1.5 cursor-pointer active:scale-98 w-[90px] shrink-0 z-30"
                   style={{ height: '78px' }}
                 >
-                  <div className="absolute top-[-26px] left-1/2 -translate-x-1/2 w-[72px] h-[72px] z-20 flex items-center justify-center">
+                  <div className="absolute top-[-38px] left-1/2 -translate-x-1/2 w-[90px] h-[90px] flex items-center justify-center pointer-events-none">
                     <img 
                       src="https://i.ibb.co/0VftFSbC/turntable-home-ee908e6a.webp" 
                       alt="Wheel" 
-                      className="h-[68px] w-[68px] object-contain select-none filter drop-shadow-[0_4px_8px_rgba(0,0,0,0.6)]"
+                      className="h-[90px] w-[90px] max-w-none object-contain select-none filter drop-shadow-[0_4px_10px_rgba(0,0,0,0.7)] pointer-events-auto"
                       referrerPolicy="no-referrer"
                     />
                   </div>
+                  <span className="text-[13px] font-bold text-white tracking-wide leading-none select-none z-30 font-sans drop-shadow-md pb-1">
+                    {t.wheelTab}
+                  </span>
                 </button>
 
                 {/* 4. Earn Tab Button */}
@@ -6346,7 +6201,7 @@ export default function App() {
                         className="h-[26px] w-[26px] object-contain select-none" 
                         referrerPolicy="no-referrer"
                       />
-                      <span className="text-[10px] font-black uppercase tracking-tight text-[#ff3a3a] leading-none mt-1">{t.earnTab}</span>
+                      <span className="text-[12px] font-medium text-[#ff3a3a] leading-none mt-1 capitalize">{t.earnTab}</span>
                     </div>
                   ) : (
                     <div className="flex flex-col items-center justify-center py-1 text-neutral-500 hover:text-neutral-400 transition-colors w-full h-[52px]">
@@ -6356,7 +6211,7 @@ export default function App() {
                         className="h-[24px] w-[24px] object-contain select-none opacity-50 hover:opacity-80 transition-opacity" 
                         referrerPolicy="no-referrer"
                       />
-                      <span className="text-[10px] font-bold uppercase tracking-tight text-neutral-500 leading-none mt-1.5">{t.earnTab}</span>
+                      <span className="text-[12px] font-medium text-neutral-500 leading-none mt-1.5 capitalize">{t.earnTab}</span>
                     </div>
                   )}
                 </button>
@@ -6385,7 +6240,7 @@ export default function App() {
                         className="h-[26px] w-[26px] object-contain select-none" 
                         referrerPolicy="no-referrer"
                       />
-                      <span className="text-[10px] font-black uppercase tracking-tight text-[#ff3a3a] leading-none mt-1">{t.mineTab}</span>
+                      <span className="text-[12px] font-medium text-[#ff3a3a] leading-none mt-1 capitalize">{t.mineTab}</span>
                     </div>
                   ) : (
                     <div className="flex flex-col items-center justify-center py-1 text-neutral-500 hover:text-neutral-400 transition-colors w-full h-[52px]">
@@ -6395,7 +6250,7 @@ export default function App() {
                         className="h-[24px] w-[24px] object-contain select-none opacity-50 hover:opacity-80 transition-opacity" 
                         referrerPolicy="no-referrer"
                       />
-                      <span className="text-[10px] font-bold uppercase tracking-tight text-neutral-500 leading-none mt-1.5">{t.mineTab}</span>
+                      <span className="text-[12px] font-medium text-neutral-500 leading-none mt-1.5 capitalize">{t.mineTab}</span>
                     </div>
                   )}
                 </button>
