@@ -65,7 +65,8 @@ export default function MobileAdminPanelView({ onLogout, onToggleView }: MobileA
            return {
                id: doc.id,
                type: 'Deposit',
-               userId: data.uid || data.userId || 'Unknown',
+               userId: data.userId || data.uid || 'Unknown',
+               displayUid: data.uid || data.userId || 'Unknown',
                amount: data.amount || data.totalAmount || 0,
                timestamp: data.createdAt?.toDate?.()?.getTime?.() || Date.now(),
                status: data.status === 'pending' ? 'Pending' : data.status === 'approved' ? 'Approved' : data.status === 'rejected' ? 'Rejected' : data.status,
@@ -88,7 +89,8 @@ export default function MobileAdminPanelView({ onLogout, onToggleView }: MobileA
            return {
                id: doc.id,
                type: 'Withdraw',
-               userId: data.uid || data.userId || 'Unknown',
+               userId: data.userId || data.uid || 'Unknown',
+               displayUid: data.uid || data.userId || 'Unknown',
                amount: data.amount || 0,
                timestamp: data.createdAt?.toDate?.()?.getTime?.() || Date.now(),
                status: data.status === 'pending' ? 'Pending' : data.status === 'approved' ? 'Approved' : data.status === 'rejected' ? 'Rejected' : data.status,
@@ -245,7 +247,7 @@ export default function MobileAdminPanelView({ onLogout, onToggleView }: MobileA
   const handleTxAction = async (id: string, newStatus: string) => {
     if (!db) return;
     const tx = transactions.find(t => t.id === id);
-    if (!tx) return;
+    if (!tx || tx.status !== 'Pending') return;
 
     try {
         const collectionName = tx.type === 'Deposit' ? 'depositRequests' : 'withdrawRequests';
@@ -519,7 +521,7 @@ export default function MobileAdminPanelView({ onLogout, onToggleView }: MobileA
                     <div className="flex justify-between items-start">
                        <div>
                          <div className="font-bold text-sm text-slate-600">Name: <span className="font-medium text-slate-500">{uName}</span></div>
-                         <div className="font-bold text-sm text-slate-600">UID: <span className="font-medium text-slate-500">{t.userId}</span></div>
+                         <div className="font-bold text-sm text-slate-600">UID: <span className="font-medium text-slate-500">{t.displayUid || t.userId}</span></div>
                          {t.type === 'Deposit' && t.utr && <div className="font-bold text-sm text-slate-600">UTR: <span className="font-medium text-slate-500">{t.utr}</span></div>}
                          {t.type === 'Withdraw' && t.methodDetails && <div className="font-bold text-sm text-slate-600">{t.methodType}: <span className="font-medium text-slate-500">{t.methodDetails}</span></div>}
                          <div className="text-xs text-slate-500 mt-1">{new Date(t.timestamp).toLocaleString()}</div>

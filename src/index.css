@@ -57,3 +57,25 @@ img {
   -webkit-touch-callout: none !important;
 }
 
+
+.custom-clip-rank3 {
+  clip-path: polygon(0 30px, 100% 0, 100% 100%, 0 100%);
+}
+.custom-clip-rank1 {
+  clip-path: polygon(50% 0, 100% 30px, 100% 100%, 0% 100%, 0 30px);
+}
+.custom-clip-rank2 {
+  clip-path: polygon(0 0, 100% 30px, 100% 100%, 0 100%);
+}
+
+@keyframes auto-scroll {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(-50%); }
+}
+
+.animate-auto-scroll {
+  animation: auto-scroll 15s linear infinite;
+}
+.animate-auto-scroll:hover {
+  animation-play-state: paused;
+}

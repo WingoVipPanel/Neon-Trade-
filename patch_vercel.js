@@ -1,9 +1,9 @@
-import fs from 'fs';
+const fs = require('fs');
 
 let content = fs.readFileSync('src/App.tsx', 'utf-8');
 
-const s1 = `const sanitizeHistoryForFirestore`;
-const r1 = `const generateDeterministicResult = (room, periodStr) => {
+const replacement = `
+  const generateDeterministicResult = (room, periodStr) => {
     let hash = 0;
     const str = periodStr + room + "salt";
     for (let i = 0; i < str.length; i++) hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
@@ -27,44 +27,43 @@ const r1 = `const generateDeterministicResult = (room, periodStr) => {
      for (let i = 0; i < count; i++) {
         const pDate = new Date((nowTs - ((i+1) * roomSecs)) * 1000);
         const minOfDay = pDate.getUTCHours() * 60 + pDate.getUTCMinutes();
-        let issue = 10001 + (minOfDay * 2) + Math.floor(pDate.getUTCSeconds() / 30);
+        let issue = 10001;
         if (room === '1m') issue = 10001 + minOfDay;
         else if (room === '3m') issue = 10001 + Math.floor(minOfDay / 3);
         else if (room === '5m') issue = 10001 + Math.floor(minOfDay / 5);
-        const period = pDate.getUTCFullYear() + String(pDate.getUTCMonth() + 1).padStart(2, '0') + String(pDate.getUTCDate()).padStart(2, '0') + issue;
+        else issue = 10001 + (minOfDay * 2) + Math.floor(pDate.getUTCSeconds() / 30);
+        const period = \`\${pDate.getUTCFullYear()}\${String(pDate.getUTCMonth() + 1).padStart(2, '0')}\${String(pDate.getUTCDate()).padStart(2, '0')}\${issue}\`;
         history.push(generateDeterministicResult(room, period));
      }
      return history;
   };
-  const sanitizeHistoryForFirestore`;
-content = content.replace(s1, r1);
+`;
 
-const s2 = "const updateLocalTimers = () => {";
-const r2 = `let lastProcessedPeriod = { '30s': '', '1m': '', '3m': '', '5m': '' };
+content = content.replace("const sanitizeHistoryForFirestore", replacement + "\n  const sanitizeHistoryForFirestore");
+
+content = content.replace("    const updateLocalTimers = () => {", \`
+    let lastProcessedPeriod = { '30s': '', '1m': '', '3m': '', '5m': '' };
     const getPeriodForTime = (time, room) => {
         const pDate = new Date(time * 1000);
         const minOfDay = pDate.getUTCHours() * 60 + pDate.getUTCMinutes();
-        let issue = 10001 + (minOfDay * 2) + Math.floor(pDate.getUTCSeconds() / 30);
+        let issue = 10001;
         if (room === '1m') issue = 10001 + minOfDay;
         else if (room === '3m') issue = 10001 + Math.floor(minOfDay / 3);
         else if (room === '5m') issue = 10001 + Math.floor(minOfDay / 5);
-        return pDate.getUTCFullYear() + String(pDate.getUTCMonth() + 1).padStart(2, '0') + String(pDate.getUTCDate()).padStart(2, '0') + issue;
+        else issue = 10001 + (minOfDay * 2) + Math.floor(pDate.getUTCSeconds() / 30);
+        return \`\${pDate.getUTCFullYear()}\${String(pDate.getUTCMonth() + 1).padStart(2, '0')}\${String(pDate.getUTCDate()).padStart(2, '0')}\${issue}\`;
     };
-    const updateLocalTimers = () => {`;
-content = content.replace(s2, r2);
 
-const s3 = `setWingoTimers({
-        '30s': 30 - (nowTs % 30),
-        '1m': 60 - (nowTs % 60),
-        '3m': 180 - (nowTs % 180),
-        '5m': 300 - (nowTs % 300),
-      });`;
-const r3 = `setWingoTimers({
+    const updateLocalTimers = () => {
+\`);
+
+const tickRep = \`      setWingoTimers({
         '30s': 30 - (nowTs % 30),
         '1m': 60 - (nowTs % 60),
         '3m': 180 - (nowTs % 180),
         '5m': 300 - (nowTs % 300),
       });
+      
       const secMap = { '30s': 30, '1m': 60, '3m': 180, '5m': 300 };
       for (const room of Object.keys(secMap)) {
          const p = getPeriodForTime(nowTs, room);
@@ -74,15 +73,23 @@ const r3 = `setWingoTimers({
              setTimeout(() => window.dispatchEvent(new CustomEvent('new_result_event', { detail: { room, result } })), 500);
          }
          lastProcessedPeriod[room] = p;
-      }`;
-content = content.replace(s3, r3);
+      }\`;
 
-const s4 = `useEffect(() => {
+content = content.replace(\`      setWingoTimers({
+        '30s': 30 - (nowTs % 30),
+        '1m': 60 - (nowTs % 60),
+        '3m': 180 - (nowTs % 180),
+        '5m': 300 - (nowTs % 300),
+      });\`, tickRep);
+
+
+content = content.replace(\`  // Reset history pages when room changes
+  useEffect(() => {
     setHistoryPage(1);
     setChartPage(1);
     setMyHistoryPage(1);
-  }, [activeWingoRoom]);`;
-const r4 = `useEffect(() => {
+  }, [activeWingoRoom]);\`, \`
+  useEffect(() => {
     if (!socketConnected) {
        setWingoHistory(prev => {
            let np = { ...prev };
@@ -91,39 +98,35 @@ const r4 = `useEffect(() => {
        });
     }
   }, [socketConnected]);
+  
   useEffect(() => {
     setHistoryPage(1);
     setChartPage(1);
     setMyHistoryPage(1);
-  }, [activeWingoRoom]);`;
-content = content.replace(s4, r4);
+  }, [activeWingoRoom]);\`);
 
-const s5 = `socket.on('new_result', ({ room, result }: any) => {
-       if (!active) return;`;
-const r5 = `const processResult = ({ room, result }: any) => {
-       if (!active) return;`;
-content = content.replace(s5, r5);
-
-const s6 = `return { ...prev, [room]: updatedBets };
+content = content.replace(\`    socket.on('new_result', ({ room, result }: any) => {
+       if (!active) return;\`, \`
+    const processResult = ({ room, result }: any) => {
+       if (!active) return;\`);
+       
+content = content.replace(\`           return { ...prev, [room]: updatedBets };
        });
-    });`;
-const r6 = `return { ...prev, [room]: updatedBets };
+    });\`, \`           return { ...prev, [room]: updatedBets };
        });
     };
     
-    const handleFallbackResult = (e: any) => processResult(e.detail);
+    const handleFallbackResult = (e) => processResult(e.detail);
     window.addEventListener('new_result_event', handleFallbackResult);
 
-    socket.on('new_result', ({ room, result }: any) => processResult({ room, result }));`;
-content = content.replace(s6, r6);
-
-const s7 = `socket.disconnect(); 
+    socket.on('new_result', ({ room, result }) => processResult({ room, result }));\`);
+    
+content = content.replace(\`      socket.disconnect(); 
     };
-  }, [selectedLang]);`;
-const r7 = `window.removeEventListener('new_result_event', handleFallbackResult);
+  }, [selectedLang]);\`, \`      window.removeEventListener('new_result_event', handleFallbackResult);
       socket.disconnect(); 
     };
-  }, [selectedLang]);`;
-content = content.replace(s7, r7);
+  }, [selectedLang]);\`);
 
 fs.writeFileSync('src/App.tsx', content);
+console.log('patched successfully!');
