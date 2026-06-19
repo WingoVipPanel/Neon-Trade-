@@ -209,9 +209,13 @@ export default function MobileAdminPanelView({ onLogout, onToggleView }: MobileA
   let lastPeriod = roomData[activeAdminRoom]?.lastPeriod || "20260522100012000";
   let activeCurrentPeriod = "";
   try {
-     const bp = lastPeriod.substring(0, 13);
-     const seq = lastPeriod.substring(13);
-     activeCurrentPeriod = bp + String(parseInt(seq) + 1).padStart(4, '0');
+     if (lastPeriod.length === 17) {
+       const bp = lastPeriod.substring(0, 13);
+       const seq = lastPeriod.substring(13);
+       activeCurrentPeriod = bp + String(parseInt(seq) + 1).padStart(4, '0');
+     } else {
+       activeCurrentPeriod = (BigInt(lastPeriod) + 1n).toString();
+     }
   } catch(e) {
      activeCurrentPeriod = String(parseInt(lastPeriod) + 1);
   }

@@ -2348,17 +2348,22 @@ export default function App() {
     const lastPeriod = lastPeriodObj?.period;
     
     let nextPeriod = '';
-    if (lastPeriod && lastPeriod.length === 17) {
-      try {
-        const basePart = lastPeriod.substring(0, 13);
-        const seqPart = lastPeriod.substring(13);
-        const nextSeq = String(parseInt(seqPart) + 1).padStart(4, '0');
-        nextPeriod = basePart + nextSeq;
-      } catch (e) {
-        nextPeriod = String(parseInt(lastPeriod) + 1);
+    if (lastPeriod) {
+      const cleaned = lastPeriod.replace(/\D/g, '');
+      if (cleaned.length === 17) {
+        try {
+          const basePart = cleaned.substring(0, 13);
+          const seqPart = cleaned.substring(13);
+          const nextSeq = String(parseInt(seqPart) + 1).padStart(4, '0');
+          nextPeriod = basePart + nextSeq;
+        } catch (e) {
+          nextPeriod = (BigInt(cleaned) + 1n).toString();
+        }
+      } else {
+        nextPeriod = (BigInt(cleaned) + 1n).toString();
       }
     } else {
-      nextPeriod = lastPeriod ? String(parseInt(lastPeriod) + 1) : '20260521100012001';
+      nextPeriod = '20260521100012001';
     }
     
     const now = new Date();
@@ -4584,15 +4589,11 @@ export default function App() {
 
                       if (lastPeriodObj && lastPeriodObj.period) {
                         try {
-                          const lastPeriod = String(lastPeriodObj.period);
-                          const timerVal = wingoTimers[activeWingoRoom || '30s'] || 0;
-                          
-                          // If we are in the "Wait" zone (last 5s), it means the result is yet to come
-                          // So the current round IS the one based on the previous + 1
-                          if (lastPeriod.length >= 13) {
+                          const lastPeriod = String(lastPeriodObj.period).replace(/\D/g, '');
+                          if (lastPeriod.length === 17) {
                             const basePart = lastPeriod.substring(0, 13);
                             const seqPart = lastPeriod.substring(13);
-                            const nextSeq = (parseInt(seqPart) + 1).toString().padStart(lastPeriod.length - 13, '0');
+                            const nextSeq = (parseInt(seqPart) + 1).toString().padStart(4, '0');
                             periodCode = basePart + nextSeq;
                           } else {
                             periodCode = (BigInt(lastPeriod) + 1n).toString();
