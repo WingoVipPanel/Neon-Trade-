@@ -655,26 +655,46 @@ export default function App() {
 
   // Stateful list of live winners updating periodically for modern slide transition
   const [liveWinners, setLiveWinners] = useState<Array<{ id: string; name: string; amount: number; game: string; gameImg: string }>>([
-    { id: 'win-1', name: 'Mem***TAJ', amount: 13.72, game: 'Wingo', gameImg: 'https://i.ibb.co/2QQr71m/file-000000008c6071faa26fa7f582b22667.png' },
-    { id: 'win-2', name: 'Mem***BUC', amount: 13.72, game: 'Wingo', gameImg: 'https://i.ibb.co/2QQr71m/file-000000008c6071faa26fa7f582b22667.png' },
-    { id: 'win-3', name: 'Mem***XJL', amount: 38.41, game: 'Wingo', gameImg: 'https://i.ibb.co/2QQr71m/file-000000008c6071faa26fa7f582b22667.png' },
-    { id: 'win-4', name: 'Mem***YHK', amount: 50.96, game: 'Wingo', gameImg: 'https://i.ibb.co/2QQr71m/file-000000008c6071faa26fa7f582b22667.png' },
-    { id: 'win-5', name: 'Mem***KND', amount: 48.02, game: 'Wingo', gameImg: 'https://i.ibb.co/2QQr71m/file-000000008c6071faa26fa7f582b22667.png' }
+    { id: 'win-1', name: 'Mem***TAJ', amount: 48.22, game: 'Wingo 1M', gameImg: 'https://i.ibb.co/2QQr71m/file-000000008c6071faa26fa7f582b22667.png' },
+    { id: 'win-2', name: 'Mem***BUC', amount: 241.14, game: 'Wingo 30s', gameImg: 'https://i.ibb.co/twP5vVhH/file-0000000052447207a3365bdca980061e.png' },
+    { id: 'win-3', name: 'Mem***XJL', amount: 154.08, game: 'Wingo 3M', gameImg: 'https://i.ibb.co/9HMwVbML/file-00000000d9a07206a1f56f9c5ed5a935.png' },
+    { id: 'win-4', name: 'Mem***YHK', amount: 382.40, game: 'Millennium 5', gameImg: 'https://i.ibb.co/WNQZyCdw/file-0000000073407209b9bf684dc8b4aeb5.png' },
+    { id: 'win-5', name: 'Mem***KND', amount: 81.63, game: 'Wingo 1M', gameImg: 'https://i.ibb.co/2QQr71m/file-000000008c6071faa26fa7f582b22667.png' }
   ]);
 
   useEffect(() => {
     const suffixesSeed = ['TAJ', 'BUC', 'XJL', 'YHK', 'KND', 'WFR', 'BIW', 'LEP', 'NFJ', 'BHC', 'EWO', 'EJL', 'KLX', 'YOH', 'RTQ', 'XCV', 'MOP', 'JUK', 'LOP', 'SDF', 'WER', 'CVB', 'NMB', 'ASD', 'GHJ'];
+    const gamesPool = [
+      { game: 'Wingo 30s', img: 'https://i.ibb.co/twP5vVhH/file-0000000052447207a3365bdca980061e.png' },
+      { game: 'Wingo 1M', img: 'https://i.ibb.co/2QQr71m/file-000000008c6071faa26fa7f582b22667.png' },
+      { game: 'Wingo 3M', img: 'https://i.ibb.co/9HMwVbML/file-00000000d9a07206a1f56f9c5ed5a935.png' },
+      { game: 'Millennium 5', img: 'https://i.ibb.co/WNQZyCdw/file-0000000073407209b9bf684dc8b4aeb5.png' }
+    ];
     
     const interval = setInterval(() => {
       const rSuffix = suffixesSeed[Math.floor(Math.random() * suffixesSeed.length)];
-      const rAmount = Number((Math.floor(10 + Math.random() * 85) + Math.random()).toFixed(2));
+      
+      let rAmount = 0;
+      const baseRand = Math.random();
+      if (baseRand < 0.4) {
+        // ₹15 - ₹150 (normal smaller wins)
+        rAmount = Number((Math.floor(15 + Math.random() * 135) + Math.random()).toFixed(2));
+      } else if (baseRand < 0.85) {
+        // ₹151 - ₹650 (balanced wins)
+        rAmount = Number((Math.floor(151 + Math.random() * 499) + Math.random()).toFixed(2));
+      } else {
+        // High normal wins! ₹651 - ₹2,400
+        rAmount = Number((Math.floor(651 + Math.random() * 1749) + Math.random()).toFixed(2));
+      }
+
+      const selectedGame = gamesPool[Math.floor(Math.random() * gamesPool.length)];
 
       const newWinner = {
         id: 'win-' + Math.random().toString(36).substring(7) + '-' + Date.now(),
         name: `Mem***${rSuffix}`,
         amount: rAmount,
-        game: 'Wingo',
-        gameImg: 'https://i.ibb.co/2QQr71m/file-000000008c6071faa26fa7f582b22667.png'
+        game: selectedGame.game,
+        gameImg: selectedGame.img
       };
 
       setLiveWinners((prev) => {
@@ -5827,11 +5847,7 @@ export default function App() {
                             setWingoWinningsAlert(null);
                             setWingoOuterMultiplier(1);
                           }}
-                          className={`group rounded-2xl overflow-hidden relative flex flex-col shadow-md cursor-pointer transition-all duration-300 ${
-                            game.id === '5m'
-                              ? 'bg-gradient-to-b from-[#4d1618] to-[#120002] border-2 border-[#ffd700]/30 shadow-[0_0_15px_rgba(253,210,117,0.15)] hover:border-[#ffd700]/70'
-                              : 'bg-[#3d0f10] border border-white/5 hover:border-red-500/25'
-                          } ${
+                          className={`group rounded-2xl overflow-hidden relative flex flex-col shadow-md cursor-pointer transition-all duration-300 bg-gradient-to-b from-[#4d1618] to-[#120002] border-2 border-[#ffd700]/30 shadow-[0_0_15px_rgba(253,210,117,0.15)] hover:border-[#ffd700]/70 ${
                             game.isComingSoon 
                               ? 'opacity-70 grayscale-[25%] active:scale-100' 
                               : 'active:scale-95 hover:scale-[1.04] hover:-translate-y-1 hover:shadow-2xl hover:shadow-black/50 hover:z-10'
@@ -5849,11 +5865,7 @@ export default function App() {
                             <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-black/20" />
                             
                             {/* Accent badge */}
-                            <span className={`absolute top-2 left-2 text-white font-extrabold text-[8px] uppercase tracking-wider py-0.5 px-2 rounded-full border shadow-md ${
-                              game.id === '5m'
-                                ? 'bg-gradient-to-r from-amber-400 to-yellow-500 text-black border-amber-300'
-                                : 'bg-[#ff3a3a] border-[#ff5a5a]/20'
-                            }`}>
+                            <span className="absolute top-2 left-2 text-black font-extrabold text-[8px] uppercase tracking-wider py-0.5 px-2 rounded-full border shadow-md bg-gradient-to-r from-amber-400 to-yellow-500 border-amber-300 font-sans">
                               {game.tag}
                             </span>
 
@@ -5869,7 +5881,7 @@ export default function App() {
 
                           {/* Detail info */}
                           <div className="p-2.5 flex flex-col text-left">
-                            <h4 className={`text-[13px] font-black tracking-tight ${game.id === '5m' ? 'text-amber-400 font-sans' : 'text-white/95'}`}>
+                            <h4 className="text-[13px] font-black tracking-tight text-amber-400 font-sans">
                               {game.name}
                             </h4>
                             <p className="text-[8px] text-neutral-400/85 font-extrabold mt-0.5 leading-none">
@@ -5987,15 +5999,15 @@ export default function App() {
                         </div>
                       </div>
                       
-                      <div className="space-y-2 mb-10 overflow-hidden relative" style={{ height: '310px' }}>
-                        <div className="flex flex-col gap-2 h-full">
+                      <div className="space-y-2 mb-10 overflow-hidden relative" style={{ height: '360px' }}>
+                        <div className="flex flex-col gap-2">
                           <AnimatePresence initial={false}>
                             {liveWinners.map((w) => (
                               <motion.div 
                                 key={w.id}
                                 layout
                                 initial={{ opacity: 0, y: -20, scale: 0.95, height: 0, marginBottom: 0 }}
-                                animate={{ opacity: 1, y: 0, scale: 1, height: 'auto', marginBottom: 2 }}
+                                animate={{ opacity: 1, y: 0, scale: 1, height: 60, marginBottom: 2 }}
                                 exit={{ opacity: 0, scale: 0.95, height: 0 }}
                                 transition={{ 
                                   opacity: { duration: 0.3 },
@@ -6004,13 +6016,13 @@ export default function App() {
                                   height: { type: "spring", stiffness: 400, damping: 28 },
                                   layout: { type: "spring", stiffness: 400, damping: 28 }
                                 }}
-                                className="flex gap-2.5 bg-[#421d1d]/90 border border-[#ff3e3e]/15 p-2 rounded-lg shadow-sm items-center relative overflow-hidden shrink-0 h-[56px]"
+                                className="flex gap-2.5 bg-[#421d1d]/90 border border-[#ff3e3e]/15 p-1.5 rounded-lg shadow-sm items-center relative overflow-hidden shrink-0 h-[60px]"
                               >
-                                {/* Left Side Game Banner Icon - Compact & Rectangular to fit the full Game Banner completely */}
-                                <div className="w-[64px] h-[38px] rounded border border-[#ffd275]/30 bg-[#321313] overflow-hidden flex-shrink-0 relative flex items-center justify-center shadow-[0_0_4px_rgba(255,187,13,0.25)] select-none">
+                                {/* Left Side Game Banner Icon - Clean Portrait Rectangle fully covered with no empty space, matching the 5M lobby card styles exactly */}
+                                <div className="w-[34px] h-[46px] rounded border border-[#ffd275]/30 bg-[#321313] overflow-hidden flex-shrink-0 relative flex items-center justify-center shadow-[0_0_4px_rgba(255,187,13,0.25)] select-none">
                                   <img 
                                     src={w.gameImg} 
-                                    className="w-full h-full object-contain select-none pointer-events-none" 
+                                    className="w-full h-full object-cover select-none pointer-events-none" 
                                     alt={w.game} 
                                     referrerPolicy="no-referrer"
                                   />
@@ -6020,7 +6032,7 @@ export default function App() {
                                   <div className="flex items-center justify-between">
                                     <span className="text-[11.5px] font-extrabold text-white truncate">{w.name}</span>
                                     <span className="text-[7px] tracking-wider font-extrabold text-[#5df0a6] bg-[#5df0a6]/10 px-1 border border-[#5df0a6]/20 rounded scale-90 origin-right">
-                                      {w.game}
+                                      Wingo
                                     </span>
                                   </div>
                                   <div className="text-[9px] text-white/50 select-none leading-tight truncate">
