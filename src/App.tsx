@@ -1541,15 +1541,6 @@ export default function App() {
   useEffect(() => {
     // 1. Local Timer Computation (UTC based)
     let lastProcessedPeriod = { '30s': '', '1m': '', '3m': '', '5m': '' };
-    const getPeriodForTime = (time, room) => {
-        const pDate = new Date(time * 1000);
-        const minOfDay = pDate.getUTCHours() * 60 + pDate.getUTCMinutes();
-        let issue = 10001 + (minOfDay * 2) + Math.floor(pDate.getUTCSeconds() / 30);
-        if (room === '1m') issue = 10001 + minOfDay;
-        else if (room === '3m') issue = 10001 + Math.floor(minOfDay / 3);
-        else if (room === '5m') issue = 10001 + Math.floor(minOfDay / 5);
-        return pDate.getUTCFullYear() + String(pDate.getUTCMonth() + 1).padStart(2, '0') + String(pDate.getUTCDate()).padStart(2, '0') + issue;
-    };
     const updateLocalTimers = () => {
       if (socketConnectedRef.current) return;
       const nowTs = Math.floor(Date.now() / 1000);
@@ -1589,7 +1580,14 @@ export default function App() {
     if (!socketConnected) {
        setWingoHistory(prev => {
            let np = { ...prev };
-           ['30s','1m','3m','5m'].forEach(r => { if (!np[r] || np[r].length === 0) np[r] = constructFallbackHistory(r, 40); });
+           ['30s','1m','3m','5m'].forEach(r => {
+                const roomSecs = r === '30s' ? 30 : r === '1m' ? 60 : r === '3m' ? 180 : 300;
+                const expectedLastPeriod = getPeriodForTime(Math.floor(Date.now() / 1000) - roomSecs, r);
+                if (!np[r] || np[r].length === 0 || np[r][0]?.period !== expectedLastPeriod) {
+                    np[r] = constructFallbackHistory(r, 50);
+                }
+           });
+           localStorage.setItem('wingo_history', JSON.stringify(np));
            return np;
        });
     }
@@ -1625,6 +1623,16 @@ export default function App() {
     }, 5000);
     return () => clearInterval(timer);
   }, []);
+
+  const getPeriodForTime = (time, room) => {
+    const pDate = new Date(time * 1000);
+    const minOfDay = pDate.getUTCHours() * 60 + pDate.getUTCMinutes();
+    let issue = 10001 + (minOfDay * 2) + Math.floor(pDate.getUTCSeconds() / 30);
+    if (room === '1m') issue = 10001 + minOfDay;
+    else if (room === '3m') issue = 10001 + Math.floor(minOfDay / 3);
+    else if (room === '5m') issue = 10001 + Math.floor(minOfDay / 5);
+    return pDate.getUTCFullYear() + String(pDate.getUTCMonth() + 1).padStart(2, '0') + String(pDate.getUTCDate()).padStart(2, '0') + issue;
+  };
 
   const generateDeterministicResult = (room, periodStr) => {
     let hash = 0;
@@ -1729,11 +1737,45 @@ export default function App() {
         if (docSnap.exists()) {
           const data = docSnap.data();
           if (data && data.history) {
-            setWingoHistory(prev => {
-              const newState = { ...prev, [room]: data.history };
-              localStorage.setItem('wingo_history', JSON.stringify(newState));
-              return newState;
-            });
+            // Check if lastUpdated is fresh (updated in last 5 minutes)
+            const lastUpdatedObj = data.lastUpdated;
+            let lastUpdatedMs = 0;
+            if (lastUpdatedObj) {
+              if (typeof lastUpdatedObj.toMillis === 'function') {
+                lastUpdatedMs = lastUpdatedObj.toMillis();
+              } else if (lastUpdatedObj.seconds) {
+                lastUpdatedMs = lastUpdatedObj.seconds * 1000;
+              } else if (typeof lastUpdatedObj === 'number') {
+                lastUpdatedMs = lastUpdatedObj;
+              }
+            }
+            
+            const isFresh = lastUpdatedMs && (Date.now() - lastUpdatedMs < 5 * 60 * 1000);
+
+            if (isFresh) {
+              setWingoHistory(prev => {
+                const newState = { ...prev, [room]: data.history };
+                localStorage.setItem('wingo_history', JSON.stringify(newState));
+                return newState;
+              });
+            } else {
+              // Stale server data (e.g. deployed on serverless platform like Vercel with no backend running)
+              console.log(`[Firestore] globalResults room ${room} is stale (last updated ${lastUpdatedMs ? new Date(lastUpdatedMs).toLocaleString() : 'Never'}). Running in standalone simulation mode.`);
+              setWingoHistory(prev => {
+                const currentHistory = prev[room] || [];
+                const roomSecs = room === '30s' ? 30 : room === '1m' ? 60 : room === '3m' ? 180 : 300;
+                const expectedLastPeriod = getPeriodForTime(Math.floor(Date.now() / 1000) - roomSecs, room);
+                
+                // If local state doesn't have the current period's latest completed result, regenerate beautiful continuous series
+                if (currentHistory.length === 0 || currentHistory[0]?.period !== expectedLastPeriod) {
+                  const fallbackHistory = constructFallbackHistory(room, 50);
+                  const newState = { ...prev, [room]: fallbackHistory };
+                  localStorage.setItem('wingo_history', JSON.stringify(newState));
+                  return newState;
+                }
+                return prev;
+              });
+            }
           }
         }
       });
