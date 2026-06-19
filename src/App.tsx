@@ -88,14 +88,26 @@ import casinoBg from './assets/images/casino_bg_1779214894050.png';
 
 // 8 Indian Casino style realistic player avatars shown in the user's reference picture
 const AVAILABLE_AVATARS = [
-  "https://api.dicebear.com/7.x/lorelei/png?seed=Olivia&backgroundColor=ffd275",      
-  "https://api.dicebear.com/7.x/lorelei/png?seed=Aria&backgroundColor=ffaa00",        
-  "https://api.dicebear.com/7.x/lorelei/png?seed=Alexander&backgroundColor=30d158",   
-  "https://api.dicebear.com/7.x/lorelei/png?seed=Sophia&backgroundColor=0a84ff",      
-  "https://api.dicebear.com/7.x/lorelei/png?seed=Caleb&backgroundColor=bf5af2",       
-  "https://api.dicebear.com/7.x/lorelei/png?seed=Elena&backgroundColor=ff453a",       
-  "https://api.dicebear.com/7.x/lorelei/png?seed=Marcus&backgroundColor=120d0d",      
-  "https://api.dicebear.com/7.x/lorelei/png?seed=Lucas&backgroundColor=41b0df"        
+  "https://i.ibb.co/vxtGgTcy/1-Cz2mt-nl.png",
+  "https://i.ibb.co/HLzxCgVC/2-Dz-Tt-Sg-I1.png",
+  "https://i.ibb.co/nyT6Kn0/3-Cie-Za-Tkx.png",
+  "https://i.ibb.co/nNBR38bP/4-Fz-E5-Gsk-B.png",
+  "https://i.ibb.co/7N0xb9kG/5-BE1kalqa.png",
+  "https://i.ibb.co/8DKmC0Gv/6-Bpt-Td-Cuy.png",
+  "https://i.ibb.co/BVL3fBdr/7-OCP1-Ruci.png",
+  "https://i.ibb.co/PGCkJS5B/8-4-L9-YXh-Cn.png",
+  "https://i.ibb.co/fVVMtG2Y/9-i-Of3oy-Ez.png",
+  "https://i.ibb.co/cSmTkjL3/10-Bcp-E5fen.png",
+  "https://i.ibb.co/KcYhsYqy/11-DBjki8-Hc.png",
+  "https://i.ibb.co/hFgkMW77/12-DZNy4n9-Y.png",
+  "https://i.ibb.co/217WqPWY/13-DEwa-Mq4g.png",
+  "https://i.ibb.co/xtMGxR0S/14-Dwy-Wm-Qfy.png",
+  "https://i.ibb.co/s9fvZpPj/15-CLy-M484.png",
+  "https://i.ibb.co/dwDbHdD7/16-BSWOqo6-F.png",
+  "https://i.ibb.co/HwWp1hf/17-q-XMVo-Eb.png",
+  "https://i.ibb.co/Mxhc5Y31/18-n-Ec-Sw01-G.png",
+  "https://i.ibb.co/Hpb7WL84/19-B4g10r-GY.png",
+  "https://i.ibb.co/Fb8nKmP6/20-js-NPML4j.png"
 ];
 
 const VIP_ICONS: { [key: number]: string } = {
@@ -123,19 +135,19 @@ const MOCK_WINNERS = [
 ];
 
 const MOCK_PODIUM = [
-  { rank: 1, name: 'Mem***G1X', amount: 3001900520.08, img: 'https://i.pravatar.cc/150?img=47' },
-  { rank: 2, name: 'Mem***DOE', amount: 124928436.08, img: 'https://i.pravatar.cc/150?img=32' },
-  { rank: 3, name: 'Mem***C3W', amount: 186398091.32, img: 'https://i.pravatar.cc/150?img=5' }
+  { rank: 1, name: 'Mem***QKV', amount: 35682.44, img: 'https://i.ibb.co/8DKmC0Gv/6-Bpt-Td-Cuy.png' },
+  { rank: 2, name: 'RAJ***FIA', amount: 24519.00, img: 'https://i.ibb.co/BVL3fBdr/7-OCP1-Ruci.png' },
+  { rank: 3, name: 'Mem***SYN', amount: 18945.00, img: 'https://i.ibb.co/vxtGgTcy/1-Cz2mt-nl.png' }
 ];
 
 const MOCK_LEADERBOARD = [
-  { rank: 4, name: 'Mem***QKV', amount: 8004389.12, img: 'https://i.pravatar.cc/150?img=11' },
-  { rank: 5, name: 'Mem***RT6', amount: 7256562.88, img: 'https://i.pravatar.cc/150?img=9' },
-  { rank: 6, name: 'NIN***PRO', amount: 6910293.60, img: 'https://i.pravatar.cc/150?img=12' },
-  { rank: 7, name: 'Mem***0PJ', amount: 4214000.00, img: 'https://i.pravatar.cc/150?img=1' },
-  { rank: 8, name: 'Mem***FVJ', amount: 3410498.00, img: 'https://i.pravatar.cc/150?img=40' },
-  { rank: 9, name: 'Vip***am', amount: 3191860.00, img: 'https://i.pravatar.cc/150?img=4' },
-  { rank: 10, name: 'Mem***WJ2', amount: 2286017.58, img: 'https://i.pravatar.cc/150?img=31' }
+  { rank: 4, name: 'Mem***OS9', amount: 9568.96, img: 'https://i.ibb.co/7N0xb9kG/5-BE1kalqa.png' },
+  { rank: 5, name: 'Mem***VV3', amount: 8742.00, img: 'https://i.ibb.co/KcYhsYqy/11-DBjki8-Hc.png' },
+  { rank: 6, name: 'Mem***ZFP', amount: 7619.80, img: 'https://i.ibb.co/vxtGgTcy/1-Cz2mt-nl.png' },
+  { rank: 7, name: 'Mem***RIL', amount: 6480.00, img: 'https://i.ibb.co/vxtGgTcy/1-Cz2mt-nl.png' },
+  { rank: 8, name: 'Mem***KAL', amount: 5324.00, img: 'https://i.ibb.co/BVL3fBdr/7-OCP1-Ruci.png' },
+  { rank: 9, name: 'Mem***JIV', amount: 4893.24, img: 'https://i.ibb.co/vxtGgTcy/1-Cz2mt-nl.png' },
+  { rank: 10, name: 'Sh***mm', amount: 4215.31, img: 'https://i.ibb.co/HLzxCgVC/2-Dz-Tt-Sg-I1.png' }
 ];
 
 const ANNOUNCEMENTS = [
@@ -622,6 +634,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [nickname, setNickname] = useState('MemberNNGDQTST');
   const [showDepositScreen, setShowDepositScreen] = useState(false);
+  const [showDepositRequiredModal, setShowDepositRequiredModal] = useState(false);
   const [showWithdrawScreen, setShowWithdrawScreen] = useState(false);
   const [showInvitationBonus, setShowInvitationBonus] = useState(false);
   const [showGlobalChat, setShowGlobalChat] = useState(false);
@@ -639,6 +652,39 @@ export default function App() {
   const [avatar, setAvatar] = useState('https://api.dicebear.com/7.x/lorelei/png?seed=Olivia&backgroundColor=ffd275');
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
   const [tempSelectedAvatar, setTempSelectedAvatar] = useState('https://api.dicebear.com/7.x/lorelei/png?seed=Olivia&backgroundColor=ffd275');
+
+  // Stateful list of live winners updating periodically for modern slide transition
+  const [liveWinners, setLiveWinners] = useState<Array<{ id: string; name: string; amount: number; game: string; gameImg: string }>>([
+    { id: 'win-1', name: 'Mem***TAJ', amount: 13.72, game: 'Wingo', gameImg: 'https://i.ibb.co/2QQr71m/file-000000008c6071faa26fa7f582b22667.png' },
+    { id: 'win-2', name: 'Mem***BUC', amount: 13.72, game: 'Wingo', gameImg: 'https://i.ibb.co/2QQr71m/file-000000008c6071faa26fa7f582b22667.png' },
+    { id: 'win-3', name: 'Mem***XJL', amount: 38.41, game: 'Wingo', gameImg: 'https://i.ibb.co/2QQr71m/file-000000008c6071faa26fa7f582b22667.png' },
+    { id: 'win-4', name: 'Mem***YHK', amount: 50.96, game: 'Wingo', gameImg: 'https://i.ibb.co/2QQr71m/file-000000008c6071faa26fa7f582b22667.png' },
+    { id: 'win-5', name: 'Mem***KND', amount: 48.02, game: 'Wingo', gameImg: 'https://i.ibb.co/2QQr71m/file-000000008c6071faa26fa7f582b22667.png' }
+  ]);
+
+  useEffect(() => {
+    const suffixesSeed = ['TAJ', 'BUC', 'XJL', 'YHK', 'KND', 'WFR', 'BIW', 'LEP', 'NFJ', 'BHC', 'EWO', 'EJL', 'KLX', 'YOH', 'RTQ', 'XCV', 'MOP', 'JUK', 'LOP', 'SDF', 'WER', 'CVB', 'NMB', 'ASD', 'GHJ'];
+    
+    const interval = setInterval(() => {
+      const rSuffix = suffixesSeed[Math.floor(Math.random() * suffixesSeed.length)];
+      const rAmount = Number((Math.floor(10 + Math.random() * 85) + Math.random()).toFixed(2));
+
+      const newWinner = {
+        id: 'win-' + Math.random().toString(36).substring(7) + '-' + Date.now(),
+        name: `Mem***${rSuffix}`,
+        amount: rAmount,
+        game: 'Wingo',
+        gameImg: 'https://i.ibb.co/2QQr71m/file-000000008c6071faa26fa7f582b22667.png'
+      };
+
+      setLiveWinners((prev) => {
+        const next = [newWinner, ...prev];
+        return next.slice(0, 5);
+      });
+    }, 2800);
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Single Session Enforcement Logic
   const getSessionId = () => {
@@ -837,6 +883,7 @@ export default function App() {
         }
 
         setBalance(userData.balance || 0);
+        setTotalDeposits(userData.totalDeposits || 0);
         setNickname(userData.nickname || 'Member');
         setAvatar(userData.avatar || userData.avatarURL || '');
       }
@@ -876,6 +923,16 @@ export default function App() {
       }
     }
   }, [balance, nickname, uid, userExp, userLevel, claimedVipRewards, claimedMonthlyRewards, avatar, isLoggedIn]);
+
+  // Auto-close deposit required modal after 3 seconds
+  useEffect(() => {
+    if (showDepositRequiredModal) {
+      const timer = setTimeout(() => {
+        setShowDepositRequiredModal(false);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [showDepositRequiredModal]);
 
   // Real-time notification listener for Recharge and Withdrawals
   useEffect(() => {
@@ -4407,6 +4464,10 @@ export default function App() {
                               key={tab.id}
                               onClick={() => {
                                 playWingoSound(clickAudioRef);
+                                if (!isAdmin && totalDeposits < 200) {
+                                  setShowDepositRequiredModal(true);
+                                  return;
+                                }
                                 setActiveWingoRoom(tab.id);
                                 setWingoBetOption(null);
                                 setWingoWinningsAlert(null);
@@ -5709,7 +5770,8 @@ export default function App() {
                           image: 'https://i.ibb.co/twP5vVhH/file-0000000052447207a3365bdca980061e.png',
                           tag: selectedLang === 'en' ? 'Super Fast' : 'अति तीव्र',
                           desc: 'Speed Draw 30s',
-                          cat: 'wingo'
+                          cat: 'wingo',
+                          isComingSoon: false
                         },
                         { 
                           id: '1m', 
@@ -5718,7 +5780,8 @@ export default function App() {
                           image: 'https://i.ibb.co/2QQr71m/file-000000008c6071faa26fa7f582b22667.png',
                           tag: selectedLang === 'en' ? 'Most Loved' : 'लोकप्रिय',
                           desc: 'Speed Room 1M',
-                          cat: 'wingo'
+                          cat: 'wingo',
+                          isComingSoon: false
                         },
                         { 
                           id: '3m', 
@@ -5727,39 +5790,21 @@ export default function App() {
                           image: 'https://i.ibb.co/9HMwVbML/file-00000000d9a07206a1f56f9c5ed5a935.png',
                           tag: selectedLang === 'en' ? 'Classic Room' : 'क्लासिक चयन',
                           desc: 'Standard Slices 3M',
-                          cat: 'wingo'
+                          cat: 'wingo',
+                          isComingSoon: false
                         },
                         { 
                           id: '5m', 
-                          name: selectedLang === 'en' ? 'Wingo 5Min' : 'विंगो ५ मिनट', 
+                          name: selectedLang === 'en' ? 'Millennium 5' : 'मिलेनियम ५', 
                           time: '5M', 
                           image: 'https://i.ibb.co/WNQZyCdw/file-0000000073407209b9bf684dc8b4aeb5.png',
-                          tag: selectedLang === 'en' ? 'Jackpot Draw' : 'जैकपॉट ड्रा',
+                          tag: selectedLang === 'en' ? 'Super Premium' : 'सुपर प्रीमियम',
                           desc: 'Mega Jackpot 5M',
-                          cat: 'wingo'
-                        },
-                        { 
-                          id: 'mines', 
-                          name: selectedLang === 'en' ? 'Mines Game' : 'माइन्स गेम', 
-                          time: 'INSTANT', 
-                          image: 'https://i.ibb.co/DgtrKCzC/012420409-35307-file-20260504132420402.webp',
-                          tag: selectedLang === 'en' ? 'Hot' : 'हॉट',
-                          desc: selectedLang === 'en' ? 'Play and win!' : 'खेलें और जीतें!',
-                          cat: 'slots',
-                          isComingSoon: true
-                        },
-                        { 
-                          id: 'mines_pro', 
-                          name: selectedLang === 'en' ? 'Mines Pro' : 'माइन्स प्रो', 
-                          time: 'INSTANT', 
-                          image: 'https://i.ibb.co/CpXsy03J/012900355-35315-file-20260504132900347.webp',
-                          tag: selectedLang === 'en' ? 'Hot' : 'हॉट',
-                          desc: selectedLang === 'en' ? 'Play and win!' : 'खेलें और जीतें!',
-                          cat: 'slots',
-                          isComingSoon: true
+                          cat: 'wingo',
+                          isComingSoon: false
                         }
                       ]
-                      .filter(g => wingoCategory === 'all' || wingoCategory === g.cat || (wingoCategory === 'popular' && ['30s', '1m', 'mines', 'mines_pro'].includes(g.id)))
+                      .filter(g => wingoCategory === 'all' || wingoCategory === g.cat || (wingoCategory === 'popular' && ['30s', '1m'].includes(g.id)))
                       .map((game) => (
                         <div
                           key={game.id}
@@ -5773,15 +5818,23 @@ export default function App() {
                               });
                               return;
                             }
+                            if (!isAdmin && totalDeposits < 200) {
+                              setShowDepositRequiredModal(true);
+                              return;
+                            }
                             setActiveWingoRoom(game.id);
                             setWingoBetOption(null);
                             setWingoWinningsAlert(null);
                             setWingoOuterMultiplier(1);
                           }}
-                          className={`group bg-[#3d0f10] border border-white/5 rounded-2xl overflow-hidden relative flex flex-col shadow-md cursor-pointer transition-all duration-300 ${
+                          className={`group rounded-2xl overflow-hidden relative flex flex-col shadow-md cursor-pointer transition-all duration-300 ${
+                            game.id === '5m'
+                              ? 'bg-gradient-to-b from-[#4d1618] to-[#120002] border-2 border-[#ffd700]/30 shadow-[0_0_15px_rgba(253,210,117,0.15)] hover:border-[#ffd700]/70'
+                              : 'bg-[#3d0f10] border border-white/5 hover:border-red-500/25'
+                          } ${
                             game.isComingSoon 
-                              ? 'opacity-70 grayscale-[25%] hover:border-amber-500/10 active:scale-100' 
-                              : 'hover:border-red-500/25 active:scale-95 hover:scale-[1.04] hover:-translate-y-1 hover:shadow-2xl hover:shadow-black/50 hover:z-10'
+                              ? 'opacity-70 grayscale-[25%] active:scale-100' 
+                              : 'active:scale-95 hover:scale-[1.04] hover:-translate-y-1 hover:shadow-2xl hover:shadow-black/50 hover:z-10'
                           }`}
                         >
                           {/* Image Box - Changed aspect to aspect-[3/4] to render full height of portrait cards */}
@@ -5789,7 +5842,7 @@ export default function App() {
                             <img
                               src={game.image}
                               alt={game.name}
-                              className={`w-full h-full object-cover transition duration-300 group-hover:scale-[1.05] ${game.id.includes('mines') ? 'scale-[1.03]' : ''}`}
+                              className="w-full h-full object-cover transition duration-300 group-hover:scale-[1.05]"
                               referrerPolicy="no-referrer"
                             />
                             {/* Inner ambient shadows and highlights */}
@@ -5797,8 +5850,8 @@ export default function App() {
                             
                             {/* Accent badge */}
                             <span className={`absolute top-2 left-2 text-white font-extrabold text-[8px] uppercase tracking-wider py-0.5 px-2 rounded-full border shadow-md ${
-                              game.isComingSoon 
-                                ? 'bg-amber-600 border-amber-500/20' 
+                              game.id === '5m'
+                                ? 'bg-gradient-to-r from-amber-400 to-yellow-500 text-black border-amber-300'
                                 : 'bg-[#ff3a3a] border-[#ff5a5a]/20'
                             }`}>
                               {game.tag}
@@ -5816,10 +5869,10 @@ export default function App() {
 
                           {/* Detail info */}
                           <div className="p-2.5 flex flex-col text-left">
-                            <h4 className="text-[13px] font-black tracking-tight text-white/95">
+                            <h4 className={`text-[13px] font-black tracking-tight ${game.id === '5m' ? 'text-amber-400 font-sans' : 'text-white/95'}`}>
                               {game.name}
                             </h4>
-                            <p className="text-[9px] text-neutral-500 font-bold mt-0.5">
+                            <p className="text-[8px] text-neutral-400/85 font-extrabold mt-0.5 leading-none">
                               {game.desc}
                             </p>
                             
@@ -5875,7 +5928,7 @@ export default function App() {
                             <button
                               id="banner-dismiss-cross-lobby"
                               onClick={() => setBannerVisible(false)}
-                              className="absolute top-2.5 right-2 px-1.5 py-1.5 rounded-full flex items-center justify-center text-rose-500 hover:text-white bg-black/40 hover:bg-rose-600/30 transition cursor-pointer z-20"
+                              className="absolute top-2.5 right-2 px-1.5 py-1.5 rounded-full flex items-center justify-center text-[#ff3e3e] hover:text-white bg-black/40 hover:bg-rose-600/30 transition cursor-pointer z-20"
                               title="Dismiss banner"
                             >
                               <X className="h-3.5 w-3.5 stroke-[3]" />
@@ -5924,8 +5977,6 @@ export default function App() {
                         )}
                       </AnimatePresence>
                     </div>
-
-                    
                     {/* Winning Information & Players of the Month Sections */}
                     <div className="px-4 mt-6">
                       
@@ -5936,28 +5987,52 @@ export default function App() {
                         </div>
                       </div>
                       
-                      <div className="space-y-3 mb-10 overflow-hidden relative" style={{ height: '360px' }}>
-                        <div className="animate-auto-scroll flex flex-col gap-3">
-                          {[...MOCK_WINNERS, ...MOCK_WINNERS].map((w, i) => (
-                            <div key={i} className="flex gap-3 bg-[#421d1d] border border-[#ff3e3e]/20 p-3 rounded-lg shadow-md items-center">
-                              <div className="w-[50px] h-[50px] rounded flex-shrink-0 bg-gradient-to-bl from-blue-400 to-cyan-500 overflow-hidden relative border-2 border-yellow-400 flex items-center justify-center shadow-[0_0_8px_rgba(255,200,0,0.5)]">
-                                <div className="absolute top-0 right-0 bg-white rounded-full w-4 h-4 flex items-center justify-center text-[10px] font-black text-blue-600 border border-yellow-400 z-20">1</div>
-                                <span className="text-[10px] font-black italic text-white z-20 bottom-1 absolute drop-shadow-md">WINGO</span>
-                                {/* Background graphics for the wingo icon imitation */}
-                                                                {/* Background graphics for the wingo icon imitation */}
-                                <div className="absolute inset-0 z-10 flex items-center justify-center -translate-y-0.5 drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]">
-                                   <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24">
-                                      <path fill="#FFDF00" d="M2.5 19h19v2h-19zm2-2l-2.5-9.5 5.5 3.5 4.5-8 4.5 8 5.5-3.5-2.5 9.5z" stroke="#AA7700" strokeWidth="1" strokeLinejoin="round"/>
-                                   </svg>
+                      <div className="space-y-2 mb-10 overflow-hidden relative" style={{ height: '310px' }}>
+                        <div className="flex flex-col gap-2 h-full">
+                          <AnimatePresence initial={false}>
+                            {liveWinners.map((w) => (
+                              <motion.div 
+                                key={w.id}
+                                layout
+                                initial={{ opacity: 0, y: -20, scale: 0.95, height: 0, marginBottom: 0 }}
+                                animate={{ opacity: 1, y: 0, scale: 1, height: 'auto', marginBottom: 2 }}
+                                exit={{ opacity: 0, scale: 0.95, height: 0 }}
+                                transition={{ 
+                                  opacity: { duration: 0.3 },
+                                  y: { type: "spring", stiffness: 400, damping: 28 },
+                                  scale: { duration: 0.2 },
+                                  height: { type: "spring", stiffness: 400, damping: 28 },
+                                  layout: { type: "spring", stiffness: 400, damping: 28 }
+                                }}
+                                className="flex gap-2.5 bg-[#421d1d]/90 border border-[#ff3e3e]/15 p-2 rounded-lg shadow-sm items-center relative overflow-hidden shrink-0 h-[56px]"
+                              >
+                                {/* Left Side Game Banner Icon - Compact & Rectangular to fit the full Game Banner completely */}
+                                <div className="w-[64px] h-[38px] rounded border border-[#ffd275]/30 bg-[#321313] overflow-hidden flex-shrink-0 relative flex items-center justify-center shadow-[0_0_4px_rgba(255,187,13,0.25)] select-none">
+                                  <img 
+                                    src={w.gameImg} 
+                                    className="w-full h-full object-contain select-none pointer-events-none" 
+                                    alt={w.game} 
+                                    referrerPolicy="no-referrer"
+                                  />
                                 </div>
-                              </div>
-                              <div className="flex-col w-full">
-                                <div className="text-[13px] font-bold text-white mb-0.5">{w.name}</div>
-                                <div className="text-[10px] text-white/50 mb-0.5">The member has won this much of money Rs:</div>
-                                <div className="text-sm font-black text-[#6dffb8]">₹{w.amount.toFixed(2)}</div>
-                              </div>
-                            </div>
-                          ))}
+
+                                <div className="flex-col w-full min-w-0 flex justify-center">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[11.5px] font-extrabold text-white truncate">{w.name}</span>
+                                    <span className="text-[7px] tracking-wider font-extrabold text-[#5df0a6] bg-[#5df0a6]/10 px-1 border border-[#5df0a6]/20 rounded scale-90 origin-right">
+                                      {w.game}
+                                    </span>
+                                  </div>
+                                  <div className="text-[9px] text-white/50 select-none leading-tight truncate">
+                                    The member has won this much of money Rs:
+                                  </div>
+                                  <div className="text-[11.5px] font-bold text-[#5df0a6] leading-none mt-0.5">
+                                    ₹{w.amount.toFixed(2)}
+                                  </div>
+                                </div>
+                              </motion.div>
+                            ))}
+                          </AnimatePresence>
                         </div>
                       </div>
 
@@ -6606,8 +6681,8 @@ export default function App() {
                     {selectedLang === 'en' ? 'Change Avatar' : 'अवतार बदलें'}
                   </h3>
 
-                  {/* 8 Avatar Grid */}
-                  <div className="grid grid-cols-4 gap-4 mb-6">
+                  {/* 20 Avatar Grid matching the exact reference layout of 3 columns with elegant scroll */}
+                  <div className="grid grid-cols-3 gap-4 mb-6 overflow-y-auto max-h-[365px] pr-1.5 scrollbar-thin scrollbar-thumb-neutral-800 scrollbar-track-transparent">
                     {AVAILABLE_AVATARS.map((url, idx) => {
                       const isSelected = tempSelectedAvatar === url;
                       return (
@@ -7233,6 +7308,71 @@ export default function App() {
 
       {/* Progressive Web App (PWA) Quick Install banner and modal overlay */}
       <QuickInstall />
+
+      {/* 200 Deposit Required Warning Modal */}
+      <AnimatePresence>
+        {showDepositRequiredModal && (
+          <motion.div
+            key="id-deposit-required-modal"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 p-6"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 10 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 10 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="bg-[#1b2330]/95 border border-white/10 shadow-[0_15px_35px_rgba(0,0,0,0.6)] w-full max-w-[280px] rounded-[18px] pt-5 overflow-hidden flex flex-col items-center text-center relative font-sans"
+            >
+              {/* Exclamation mark */}
+              <div className="text-white text-3xl font-black mb-3 select-none leading-none">
+                !
+              </div>
+
+              {/* Divider line under exclamation */}
+              <div className="w-full h-[1px] bg-white/10" />
+
+              {/* Modal Body */}
+              <div className="p-4 flex flex-col items-center">
+                {/* Error Header */}
+                <div className="text-[14px] font-bold text-white/95 leading-tight tracking-wide mb-1">
+                  Error: 1003
+                </div>
+
+                {/* Subtitle Message precisely configured as requested */}
+                <div className="text-[12.5px] text-neutral-200 font-medium px-2 mt-1 leading-snug">
+                  {selectedLang === 'en' 
+                    ? '₹200 deposit required to enter.' 
+                    : 'प्रवेश करने के लिए ₹200 का डिपॉजिट आवश्यक है।'}
+                </div>
+              </div>
+
+              {/* Action buttons integrated neatly with Goagames aesthetics */}
+              <div className="w-full flex border-t border-white/10 divide-x divide-white/10 mt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDepositRequiredModal(false);
+                    setShowDepositScreen(true);
+                  }}
+                  className="w-1/2 py-3 text-[12px] font-sans font-black text-blue-400 hover:bg-white/5 active:bg-white/10 transition cursor-pointer text-center uppercase tracking-wide"
+                >
+                  {selectedLang === 'en' ? 'Deposit' : 'डिपॉजिट'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowDepositRequiredModal(false)}
+                  className="w-1/2 py-3 text-[12px] font-sans font-black text-neutral-400 hover:text-white hover:bg-white/5 active:bg-white/10 transition cursor-pointer text-center uppercase tracking-wide"
+                >
+                  {selectedLang === 'en' ? 'Close' : 'बंद करें'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

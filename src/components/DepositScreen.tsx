@@ -616,7 +616,11 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
         {/* Recharge instructions */}
         <div className="bg-[#3d0f10] rounded-2xl p-4.5 border border-white/10 shadow-md relative mb-6">
           <div className="flex items-center gap-2 mb-4">
-            <span className="text-[16px] select-none text-[#ff9c5a]">📖</span>
+            <div className="text-[#fbb511] flex items-center justify-center">
+              <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19 2H6c-1.206 0-3 .799-3 3v14c0 2.201 1.794 3 3 3h13c1.103 0 2-.897 2-2V4c0-1.103-.897-2-2-2zm-1 2v10H7c-.837 0-1.542-.144-2-.321V6.321c.458-.178 1.163-.321 2-.321h11v2H7v2h11V4z" />
+              </svg>
+            </div>
             <span className="text-[14px] font-bold text-white tracking-tight">Recharge instructions</span>
           </div>
           <div className="text-[12px] text-white/70 space-y-3 font-medium leading-relaxed">
@@ -639,21 +643,14 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
           </div>
         </div>
 
-        {/* Tips section */}
-        <div className="text-white/80 text-[12.5px] leading-[1.6] mb-8 bg-[#3d0f10]/30 rounded-xl p-4 border border-white/5">
-          <div className="font-bold mb-2 text-[13.5px] text-white">Deposit tips:</div>
-          <p className="mb-2">1. Each deposit will be credited within 1-5 minutes.</p>
-          <p className="mb-2">2. After the payment is successful, please return to the Neon Trade deposit page to check your account balance.</p>
-          <p className="mb-3">3. If your deposit does not arrive within 30 minutes, please contact customer service for help.</p>
-
-          <div className="font-bold mb-1.5 text-[13.5px] text-white mt-4">Important notes:</div>
-          <p>Please do not modify the payment amount. Avoid reusing saved QR codes or UPI accounts for multiple payments.</p>
-        </div>
-
         {/* Deposit history Title Header */}
         <div ref={historyRef} className="flex items-center justify-between mt-8 mb-5 border-t border-white/10 pt-6">
           <div className="flex items-center gap-2">
-            <span className="text-[17px] select-none text-[#ff4148]">📋</span>
+            <div className="text-[#fbb511] flex items-center justify-center">
+              <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19 3H5c-1.103 0-2 .897-2 2v14c0 1.103.897 2 2 2h14c1.103 0 2-.897 2-2V5c0-1.103-.897-2-2-2zm-2 10H7v-2h10v2zm0-4H7V7h10v2zm0 8H7v-2h10v2z" />
+              </svg>
+            </div>
             <h4 id="deposit-history-title" className="text-[15px] font-bold text-white tracking-wide">Deposit history</h4>
           </div>
           <span className="text-[11.5px] text-white/40 font-semibold uppercase tracking-wider">{depositHistory.length} Record(s)</span>
@@ -661,8 +658,50 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
 
         {/* Deposit history Cards container */}
         {depositHistory.length === 0 ? (
-          <div className="bg-[#3d0f10]/40 rounded-2xl p-7 text-center border border-white/5 text-white/40 text-[12.5px] font-medium leading-relaxed italic">
-            No deposit history yet. Make a deposit above to get started!
+          <div className="w-full flex flex-col items-center justify-center py-12 px-4 select-none">
+            <div className="w-full max-w-[150px] aspect-[16/11] relative flex items-center justify-center mb-1">
+              <svg className="w-full h-full text-white/10" viewBox="0 0 200 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+                {/* Background trees/peaks */}
+                <path d="M35 90 L45 74 L55 90 Z" fill="currentColor" opacity="0.3" />
+                <path d="M165 92 L172 80 L179 92 Z" fill="currentColor" opacity="0.3" />
+                
+                {/* Curved bill scroll roller lying horizontally */}
+                <path 
+                  d="M75 50 C75 42, 125 42, 125 50 L125 82 C125 90, 75 90, 75 82 Z" 
+                  fill="currentColor" 
+                  opacity="0.12" 
+                />
+                
+                {/* Rolling paper curves */}
+                <path 
+                  d="M75 80 C75 92, 125 92, 125 80" 
+                  stroke="currentColor" 
+                  strokeWidth="2" 
+                  strokeLinecap="round" 
+                  opacity="0.25"
+                />
+                <path 
+                  d="M73 48 C73 40, 123 40, 123 48" 
+                  stroke="currentColor" 
+                  strokeWidth="2" 
+                  strokeLinecap="round" 
+                  opacity="0.2"
+                />
+                
+                {/* Lines representing rows in the document */}
+                <line x1="85" y1="56" x2="115" y2="56" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.25" />
+                <line x1="85" y1="64" x2="115" y2="64" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.25" />
+                <line x1="85" y1="72" x2="108" y2="72" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.18" />
+                
+                {/* Tiny paper plane or floating decoration */}
+                <path d="M55 58 L68 51 L64 62 L61 59 Z" fill="currentColor" opacity="0.3" />
+                <path d="M46 64 C48 62, 52 59, 55 58" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeDasharray="2 2" opacity="0.25" />
+                
+                {/* Horizontal base line */}
+                <line x1="30" y1="90" x2="170" y2="90" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.15" />
+              </svg>
+            </div>
+            <div className="text-white/30 text-[13.5px] font-bold tracking-wide mt-3">No data</div>
           </div>
         ) : (
           <div className="space-y-4">

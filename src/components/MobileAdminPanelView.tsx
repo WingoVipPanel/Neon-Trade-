@@ -263,7 +263,10 @@ export default function MobileAdminPanelView({ onLogout, onToggleView }: MobileA
                 if (userDoc.exists()) {
                     const currentBal = userDoc.data().balance || 0;
                     if (tx.type === 'Deposit') {
-                         t.update(userRef, { balance: currentBal + tx.amount });
+                         t.update(userRef, { 
+                             balance: currentBal + tx.amount,
+                             totalDeposits: (userDoc.data().totalDeposits || 0) + tx.amount
+                         });
                     } else if (tx.type === 'Withdraw') {
                          // Some might want it deducted beforehand, if not:
                          t.update(userRef, { balance: Math.max(0, currentBal - tx.amount) });
