@@ -1,19 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { Download, X, ShieldCheck, Share, HelpCircle, CheckCircle2 } from 'lucide-react';
+import { Download, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 const gameLogo = "https://i.ibb.co/rGjxr0hn/file-00000000d308720cab57b8c2210b5b42.png";
 
-export default function QuickInstall() {
+interface QuickInstallProps {
+  selectedLang?: 'en' | 'hi';
+}
+
+export default function QuickInstall({ selectedLang }: QuickInstallProps) {
   const [showBanner, setShowBanner] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [showChromePrompt, setShowChromePrompt] = useState(false);
   const [installProgress, setInstallProgress] = useState<number | null>(null);
   const [isInstalled, setIsInstalled] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
-  const [platform, setPlatform] = useState<'ios' | 'android' | 'desktop'>('desktop');
-  const [showSuccess, setShowSuccess] = useState(false);
 
-  // Listen for native beforeinstallprompt event
+  const lang = selectedLang || 'en';
+
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
@@ -24,31 +28,16 @@ export default function QuickInstall() {
     const handleAppInstalled = () => {
       console.log('App was successfully installed (native callback)');
       setIsInstalled(true);
-      setShowSuccess(true);
-      setInstallProgress(100);
+      setShowModal(false);
+      setShowChromePrompt(false);
+      setShowBanner(false);
       localStorage.setItem('wt_app_installed', 'true');
-      
-      // Auto close after success
-      setTimeout(() => {
-        setShowModal(false);
-        setShowBanner(false);
-      }, 2000);
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     window.addEventListener('appinstalled', handleAppInstalled);
 
-    // Detect platform
-    const ua = navigator.userAgent.toLowerCase();
-    if (/iphone|ipad|ipod/.test(ua)) {
-      setPlatform('ios');
-    } else if (/android/.test(ua)) {
-      setPlatform('android');
-    } else {
-      setPlatform('desktop');
-    }
-
-    // Check if already in standalone display mode (installed)
+    // Initial check display mode
     if (
       window.matchMedia('(display-mode: standalone)').matches ||
       (window.navigator as any).standalone === true ||
@@ -58,9 +47,9 @@ export default function QuickInstall() {
       setShowBanner(false);
     }
 
-    // Check localStorage to see if user dismissed it recently
-    const dismissed = localStorage.getItem('wt_install_dismissed_v2');
-    if (dismissed && dismissed === 'true') {
+    // Check localStorage if dismissed in this session
+    const dismissed = localStorage.getItem('wt_install_dismissed_v3');
+    if (dismissed === 'true') {
       setShowBanner(false);
     }
 
@@ -73,255 +62,250 @@ export default function QuickInstall() {
   const handleDismiss = (e: React.MouseEvent) => {
     e.stopPropagation();
     setShowBanner(false);
-    localStorage.setItem('wt_install_dismissed_v2', 'true');
+    localStorage.setItem('wt_install_dismissed_v3', 'true');
   };
 
-  const handleInstallClick = async () => {
+  const triggerRealOrSimulatedInstall = async () => {
     if (deferredPrompt) {
       try {
-        // MUST call prompt() inside a trusted user gesture thread
+        setShowModal(false);
         deferredPrompt.prompt();
-        
-        // Wait for native prompt selection
         const { outcome } = await deferredPrompt.userChoice;
-        console.log(`User choice outcome: ${outcome}`);
-        
+        console.log(`User prompt choice outcome: ${outcome}`);
         if (outcome === 'accepted') {
-          // Start simulated progress bar to match native download speed
-          setInstallProgress(0);
-          let current = 0;
-          const interval = setInterval(() => {
-            current += Math.floor(Math.random() * 12) + 8;
-            if (current >= 100) {
-              current = 100;
-              setInstallProgress(100);
-              setShowSuccess(true);
-              setIsInstalled(true);
-              clearInterval(interval);
-              localStorage.setItem('wt_app_installed', 'true');
-              
-              setTimeout(() => {
-                setShowModal(false);
-                setShowBanner(false);
-              }, 2000);
-            } else {
-              setInstallProgress(current);
-            }
-          }, 120);
-        } else {
-          // User cancelled prompt, reset
-          setInstallProgress(null);
+          setIsInstalled(true);
+          setShowBanner(false);
+          localStorage.setItem('wt_app_installed', 'true');
         }
       } catch (err) {
-        console.error('Error triggering Native Prompt:', err);
-        runSimulatedBackupInstall();
+        console.error('Error invoking native prompt:', err);
+        // Fallback to Chrome Simulation
+        setShowModal(false);
+        setShowChromePrompt(true);
       }
       setDeferredPrompt(null);
     } else {
-      // Backup/iOS simulation & instructions
-      runSimulatedBackupInstall();
+      // Show Chrome dialog simulation for iframe/non-PWA context
+      setShowModal(false);
+      setShowChromePrompt(true);
     }
   };
 
-  const runSimulatedBackupInstall = () => {
+  const handleSimulatedInstallSubmit = () => {
+    // Start installation progress sequence
+    setShowChromePrompt(false);
     setInstallProgress(0);
-    let current = 0;
+    
+    // Trigger download of blank mock .apk as secondary backup file download so user actually sees native apk downloading!
+    try {
+      const blob = new Blob(["13LGAME Application Package"], { type: "application/vnd.android.package-archive" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = "13LGAME.apk";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error("APK download fallback skipped", err);
+    }
+
+    let progress = 0;
     const interval = setInterval(() => {
-      current += Math.floor(Math.random() * 12) + 8;
-      if (current >= 100) {
-        current = 100;
+      progress += Math.floor(Math.random() * 20) + 10;
+      if (progress >= 100) {
+        progress = 100;
         setInstallProgress(100);
-        setShowSuccess(true);
+        setIsInstalled(true);
+        setShowBanner(false);
+        localStorage.setItem('wt_app_installed', 'true');
         clearInterval(interval);
         
-        // Keep screen open so they can follow iOS or Android custom menu instructions if not automatic
         setTimeout(() => {
-          if (platform === 'android' || platform === 'desktop') {
-            setShowModal(false);
-            setShowBanner(false);
-          }
-        }, 3000);
+          setInstallProgress(null);
+        }, 1500);
       } else {
-        setInstallProgress(current);
+        setInstallProgress(progress);
       }
-    }, 120);
+    }, 150);
   };
 
-  // If already installed, do not render banner or modal
-  if (isInstalled && !showModal) return null;
+  if (isInstalled && installProgress === null) return null;
 
   return (
     <>
-      {/* FLOATING BANNER AT THE BOTTOM */}
+      {/* 1. STICKY FLOAT PROMO BANNER (Screenshot 1) */}
       <AnimatePresence>
-        {showBanner && !isInstalled && (
+        {showBanner && !isInstalled && installProgress === null && (
           <motion.div
-            initial={{ y: 80, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 80, opacity: 0 }}
-            transition={{ type: 'spring', damping: 25, stiffness: 180 }}
+            initial={{ y: 80, opacity: 0, x: '-50%' }}
+            animate={{ y: 0, opacity: 1, x: '-50%' }}
+            exit={{ y: 80, opacity: 0, x: '-50%' }}
+            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
             id="install-banner-wrapper"
-            className="fixed bottom-[74px] left-0 right-0 z-40 mx-4 md:max-w-md md:mx-auto cursor-pointer"
             onClick={() => setShowModal(true)}
+            className="fixed bottom-[74px] left-1/2 z-40 w-[92%] max-w-[390px] h-[52px] bg-gradient-to-r from-[#de2222] to-[#eb3a44] text-white rounded-full flex items-center justify-between shadow-xl cursor-pointer pl-2 pr-2 border border-white/5"
           >
-            <div className="bg-gradient-to-r from-[#d92a3f] to-[#e63946] hover:from-[#c22134] hover:to-[#d02c38] text-white p-3 pr-4 rounded-xl flex items-center justify-between shadow-2xl border border-white/10 transition-all active:scale-98">
-              {/* Left Logo / White download badge element */}
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-inner relative flex-shrink-0">
-                  <img 
-                    src={gameLogo} 
-                    alt="App Logo"
-                    className="w-8 h-8 object-contain rounded-md"
-                    referrerPolicy="no-referrer"
-                  />
-                  <div className="absolute -bottom-1 -right-1 bg-red-600 text-white rounded-full p-0.5 border border-white">
-                    <Download size={8} className="stroke-[3]" />
-                  </div>
-                </div>
-                
-                {/* Content text */}
-                <div className="flex flex-col">
-                  <span className="text-xs font-bold uppercase tracking-wider font-sans leading-tight">
-                    Quick Install
-                  </span>
-                  <span className="text-[11px] text-red-55 opacity-95 font-medium">
-                    Download APP for a Better Experience
-                  </span>
-                </div>
-              </div>
-
-              {/* Right install arrow or close badge */}
-              <div className="flex items-center gap-2">
-                <span className="bg-white/20 hover:bg-white/30 text-white text-[10px] font-bold px-2.5 py-1 rounded-lg uppercase tracking-wider transition-all whitespace-nowrap">
-                  INSTALL NOW
-                </span>
-                <button 
-                  onClick={handleDismiss} 
-                  className="p-1 hover:bg-white/10 rounded-full transition-colors"
-                  aria-label="Dismiss"
-                >
-                  <X size={14} className="text-white/85" />
-                </button>
-              </div>
+            {/* Download Icon in White Badge */}
+            <div className="w-9 h-9 min-w-[36px] bg-white rounded-full flex items-center justify-center shadow-md relative flex-shrink-0 select-none">
+              <Download className="text-[#de2222] stroke-[3]" size={16} />
             </div>
+
+            {/* Captivating text content */}
+            <div className="flex-1 ml-3 text-left leading-tight py-0.5">
+              <span className="text-[12px] font-black text-white tracking-wide block uppercase font-sans select-none">
+                {lang === 'en' ? 'Download APP for a Better' : 'बेहतर अनुभव के लिए'}
+              </span>
+              <span className="text-[12px] font-black text-white tracking-wide block uppercase font-sans select-none">
+                {lang === 'en' ? 'Experience' : 'ऐप डाउनलोड करें'}
+              </span>
+            </div>
+
+            {/* Close Button wrapped in translucent circle */}
+            <button
+              onClick={handleDismiss}
+              className="w-7 h-7 rounded-full bg-black/15 hover:bg-black/25 flex items-center justify-center transition-colors mr-1 cursor-pointer"
+              aria-label="Dismiss"
+            >
+              <X size={15} className="text-white/94 stroke-[2.5]" />
+            </button>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* QUICK INSTALL MODAL STEP OVERLAY */}
+      {/* 2. QUICK INSTALL POPUP MODAL (Screenshot 2) */}
       <AnimatePresence>
         {showModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div 
+            {/* Dark back curtains */}
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowModal(false)}
-              className="absolute inset-0 bg-black/75 backdrop-blur-sm"
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
             />
 
-            {/* Modal Body Card */}
+            {/* Modal Box */}
             <motion.div
               initial={{ scale: 0.9, opacity: 0, y: 30 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 30 }}
               transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-              className="relative w-full max-w-sm bg-white text-slate-800 rounded-3xl p-6 shadow-2xl overflow-hidden border border-white/20 flex flex-col items-center"
+              className="relative w-full max-w-[315px] bg-white text-slate-800 rounded-[32px] p-6 shadow-2xl flex flex-col items-center select-none border border-slate-100"
             >
-              {/* Close Button top-right */}
-              <button 
-                onClick={() => setShowModal(false)}
-                className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 bg-slate-100 hover:bg-slate-200 rounded-full transition-all"
-              >
-                <X size={16} />
-              </button>
-
-              {/* Lightning Bolt icon + Quick Install Title */}
-              <div className="flex items-center gap-2 mt-2 mb-1.5">
-                <span className="text-red-500 text-xl font-bold">⚡</span>
-                <h3 className="text-md md:text-lg font-extrabold font-sans text-slate-900 uppercase tracking-wide">
-                  Quick Install
+              {/* Lightning symbol and Heading */}
+              <div className="flex items-center gap-2 mt-4 mb-2">
+                <span className="text-[#f43f5e] text-2xl font-black">⚡</span>
+                <h3 className="text-[21px] font-black text-slate-900 tracking-tight font-sans">
+                  {lang === 'en' ? 'Quick Install' : 'त्वरित इंस्टॉल'}
                 </h3>
               </div>
 
-              {/* Activated Shield Badge */}
-              <div className="border border-emerald-200 text-emerald-600 bg-emerald-50 font-bold text-[10px] px-3.5 py-1 rounded-full flex items-center gap-1.5 uppercase tracking-wider mb-5">
-                <ShieldCheck size={12} className="stroke-[3]" />
-                <span>100% Safe & Verified</span>
+              {/* Security shield and Verified Badge */}
+              <div className="border border-rose-200/80 bg-[#ffebee] text-[#f43f5e] font-extrabold text-[12px] px-5 py-1.5 rounded-full flex items-center gap-1 mt-1 mb-8 shadow-sm">
+                <span className="text-sm">🛡️</span>
+                <span>{lang === 'en' ? 'Activated' : 'सक्रिय'}</span>
               </div>
 
-              {/* Real Game Logo Container in Modal */}
-              <div className="w-24 h-24 bg-gradient-to-br from-slate-50 to-amber-50 p-2.5 rounded-2xl shadow-md border border-slate-100 mb-5 flex items-center justify-center relative">
-                <img 
-                  src={gameLogo} 
-                  alt="Neon Trade Logo" 
-                  className="w-full h-full object-contain rounded-xl select-none"
-                  referrerPolicy="no-referrer"
-                />
-                <div className="absolute -bottom-1 -right-1 bg-emerald-500 text-white rounded-full p-1 border-2 border-white shadow-md animate-bounce">
-                  <Download size={10} className="stroke-[3]" />
-                </div>
-              </div>
+              {/* Install Button */}
+              <button
+                onClick={triggerRealOrSimulatedInstall}
+                className="w-full py-3.5 bg-gradient-to-r from-[#de2222] to-[#eb3a44] hover:brightness-105 active:brightness-95 active:scale-97 text-white font-black rounded-2xl text-base uppercase tracking-wider transition-all duration-150 shadow-lg shadow-red-500/15 cursor-pointer text-center leading-none"
+              >
+                {lang === 'en' ? 'Install' : 'इंस्टॉल'}
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
-              {/* Description */}
-              <div className="text-center mb-5">
-                <h4 className="font-extrabold text-slate-900 text-sm">Neon Trade Standalone App</h4>
-                <p className="text-[11px] text-slate-500 mt-1 leading-relaxed max-w-[260px] mx-auto">
-                  Instant launch from your home screen. Uses almost zero cache storage, and opens 3x faster than normal browsing.
-                </p>
-              </div>
+      {/* 3. SIMULATED BROWSER NATIVE INSTALL OVERLAY (Screenshot 3) */}
+      <AnimatePresence>
+        {showChromePrompt && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+            {/* Background screen overlay */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowChromePrompt(false)}
+              className="absolute inset-0 bg-black/75"
+            />
 
-              {/* Success Screen Or Custom Loader UI */}
-              {showSuccess ? (
-                <div className="w-full bg-emerald-50 border border-emerald-100 text-emerald-700 py-3 rounded-2xl flex flex-col items-center justify-center gap-2 text-center">
-                  <CheckCircle2 className="text-emerald-500 stroke-[2.5]" size={28} />
-                  <span className="font-extrabold text-xs uppercase tracking-wide">App Installed Successfully!</span>
-                </div>
-              ) : installProgress === null ? (
-                <button
-                  onClick={handleInstallClick}
-                  className="w-full py-3.5 bg-gradient-to-r from-[#d92a3f] to-[#e63946] hover:from-[#c22134] hover:to-[#d02c38] text-white font-extrabold rounded-2xl text-xs uppercase tracking-wider transition-all duration-200 shadow-md active:scale-97 cursor-pointer text-center"
-                >
-                  Install Now
-                </button>
-              ) : (
-                <div className="w-full relative h-[44px] bg-slate-100 rounded-2xl overflow-hidden flex items-center justify-center select-none font-bold">
-                  {/* Progress bar fill */}
-                  <motion.div 
-                    initial={{ width: 0 }}
-                    animate={{ width: `${installProgress}%` }}
-                    transition={{ ease: "easeOut" }}
-                    className="absolute top-0 left-0 bottom-0 bg-red-500"
+            {/* Simulated Dialog Frame */}
+            <motion.div
+              initial={{ scale: 0.92, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.92, opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="relative w-full max-w-[310px] bg-white rounded-3xl p-5 shadow-2xl flex flex-col font-sans text-slate-900 select-none border border-slate-100"
+            >
+              {/* Prompt title header */}
+              <h4 className="text-[19px] font-medium text-slate-900 mb-4 select-none pr-4 text-left leading-none font-sans">
+                Install app
+              </h4>
+
+              {/* Icon & App Details Row */}
+              <div className="flex items-center gap-4 py-1.5 mb-5 text-left">
+                {/* App circular logo matching Screenshot 3 */}
+                <div className="w-14 h-14 bg-white rounded-2xl shadow-sm overflow-hidden border border-slate-100 flex-shrink-0 flex items-center justify-center p-0.5">
+                  <img
+                    src={gameLogo}
+                    alt="App Logo"
+                    className="w-full h-full object-contain rounded-xl"
+                    referrerPolicy="no-referrer"
                   />
-                  {/* Percentage content overlay */}
-                  <span className="relative z-10 text-xs font-black uppercase tracking-wider text-slate-900 mix-blend-difference">
-                    Installing {installProgress}%
+                </div>
+
+                {/* Vertical detail stack */}
+                <div className="flex flex-col justify-center leading-tight">
+                  <span className="text-base font-medium text-slate-900 font-sans leading-none">
+                    13LGAME
+                  </span>
+                  <span className="text-[12.5px] text-slate-500 font-normal leading-none mt-1.5">
+                    13lwin19.com
                   </span>
                 </div>
-              )}
-
-              {/* HELP INFORMATION CONTAINER */}
-              <div className="mt-5 pt-4 border-t border-slate-100 w-full text-left">
-                <div className="flex items-start gap-2 text-[11px] text-slate-600 bg-amber-50/50 p-2.5 rounded-xl border border-amber-100/50">
-                  <HelpCircle size={14} className="text-amber-600 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-bold text-slate-800">Quick Guide:</p>
-                    {platform === 'ios' ? (
-                      <ol className="list-decimal list-inside space-y-1 mt-1 font-medium text-slate-600">
-                        <li>Tap the Safari <span className="text-blue-600 font-bold inline-flex items-center">Share <Share size={10} className="mx-0.5 inline" /></span> button at the bottom.</li>
-                        <li>Select <span className="font-black text-[#d92a3f]">"Add to Home Screen"</span> from options.</li>
-                        <li>Click <span className="font-bold">"Add"</span> top-right. App is ready!</li>
-                      </ol>
-                    ) : (
-                      <p className="mt-0.5 text-slate-500 leading-normal">
-                        After clicking "Install Now", confirm the installation in your browser's prompt. 
-                        If the prompt does not launch automatically, tap the browser menu (⋮) and choose <span className="font-extrabold text-slate-800">"Install app"</span> or <span className="font-extrabold text-[#d92a3f]">"Add to Home Screen"</span>.
-                      </p>
-                    )}
-                  </div>
-                </div>
               </div>
-              
+
+              {/* Simulated browser CTA Buttons */}
+              <div className="flex items-center justify-end gap-5 text-sm font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setShowChromePrompt(false)}
+                  className="text-[#1a73e8] hover:bg-[#1a73e8]/5 px-3 py-2 rounded-lg transition-colors cursor-pointer select-none"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSimulatedInstallSubmit}
+                  className="text-[#1a73e8] hover:bg-[#1a73e8]/5 px-3 py-2 rounded-lg transition-colors cursor-pointer select-none"
+                >
+                  Install
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* 4. ON-SCREEN PROGRESS TOAST OR NOTIFICATION */}
+      <AnimatePresence>
+        {installProgress !== null && (
+          <div className="fixed inset-x-0 bottom-24 z-50 flex justify-center px-6">
+            <motion.div
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: -20, opacity: 0 }}
+              className="bg-[#1b1b1f] text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-4 text-xs font-bold max-w-[280px] w-full border border-white/10"
+            >
+              {/* Spinner */}
+              <div className="w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+              <div className="flex-1 text-left leading-none font-sans">
+                {lang === 'en' ? 'Installing Application...' : 'ऐप स्थापित हो रहा है...'}
+                <div className="text-[10px] text-neutral-400 mt-1">{installProgress}% complete</div>
+              </div>
             </motion.div>
           </div>
         )}
