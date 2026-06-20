@@ -6,9 +6,10 @@ const gameLogo = "https://i.ibb.co/rGjxr0hn/file-00000000d308720cab57b8c2210b5b4
 
 interface QuickInstallProps {
   selectedLang?: 'en' | 'hi';
+  currentTab?: string;
 }
 
-export default function QuickInstall({ selectedLang }: QuickInstallProps) {
+export default function QuickInstall({ selectedLang, currentTab }: QuickInstallProps) {
   const [showBanner, setShowBanner] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [showChromePrompt, setShowChromePrompt] = useState(false);
@@ -19,6 +20,10 @@ export default function QuickInstall({ selectedLang }: QuickInstallProps) {
   const lang = selectedLang || 'en';
 
   useEffect(() => {
+    // Force clear old persistent localStorage values to ensure the user gets to see the banner immediately
+    localStorage.removeItem('wt_app_installed');
+    localStorage.removeItem('wt_install_dismissed_v3');
+
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e);
@@ -31,24 +36,29 @@ export default function QuickInstall({ selectedLang }: QuickInstallProps) {
       setShowModal(false);
       setShowChromePrompt(false);
       setShowBanner(false);
-      localStorage.setItem('wt_app_installed', 'true');
+      sessionStorage.setItem('wt_app_installed', 'true');
+    };
+
+    const handleTriggerInstall = () => {
+      setShowModal(true);
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     window.addEventListener('appinstalled', handleAppInstalled);
+    window.addEventListener('trigger-quick-install', handleTriggerInstall);
 
     // Initial check display mode
     if (
       window.matchMedia('(display-mode: standalone)').matches ||
       (window.navigator as any).standalone === true ||
-      localStorage.getItem('wt_app_installed') === 'true'
+      sessionStorage.getItem('wt_app_installed') === 'true'
     ) {
-      setIsInstalled(true);
-      setShowBanner(false);
+      setIsInstalled(false); // Enable visibility even in standalone for testing/viewing
+      setShowBanner(true);
     }
 
-    // Check localStorage if dismissed in this session
-    const dismissed = localStorage.getItem('wt_install_dismissed_v3');
+    // Check sessionStorage if dismissed in this session
+    const dismissed = sessionStorage.getItem('wt_install_dismissed_v3');
     if (dismissed === 'true') {
       setShowBanner(false);
     }
@@ -56,13 +66,14 @@ export default function QuickInstall({ selectedLang }: QuickInstallProps) {
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
+      window.removeEventListener('trigger-quick-install', handleTriggerInstall);
     };
   }, []);
 
   const handleDismiss = (e: React.MouseEvent) => {
     e.stopPropagation();
     setShowBanner(false);
-    localStorage.setItem('wt_install_dismissed_v3', 'true');
+    sessionStorage.setItem('wt_install_dismissed_v3', 'true');
   };
 
   const triggerRealOrSimulatedInstall = async () => {
@@ -75,7 +86,7 @@ export default function QuickInstall({ selectedLang }: QuickInstallProps) {
         if (outcome === 'accepted') {
           setIsInstalled(true);
           setShowBanner(false);
-          localStorage.setItem('wt_app_installed', 'true');
+          sessionStorage.setItem('wt_app_installed', 'true');
         }
       } catch (err) {
         console.error('Error invoking native prompt:', err);
@@ -117,7 +128,7 @@ export default function QuickInstall({ selectedLang }: QuickInstallProps) {
         setInstallProgress(100);
         setIsInstalled(true);
         setShowBanner(false);
-        localStorage.setItem('wt_app_installed', 'true');
+        sessionStorage.setItem('wt_app_installed', 'true');
         clearInterval(interval);
         
         setTimeout(() => {
@@ -133,40 +144,52 @@ export default function QuickInstall({ selectedLang }: QuickInstallProps) {
 
   return (
     <>
-      {/* 1. STICKY FLOAT PROMO BANNER (Screenshot 1) */}
+      {/* 1. STICKY FLOAT PROMO BANNER (Screenshot 1 & 3 inspired Yellow Add to Desktop banner) */}
       <AnimatePresence>
-        {showBanner && !isInstalled && installProgress === null && (
+        {showBanner && currentTab === 'home' && !isInstalled && installProgress === null && (
           <motion.div
-            initial={{ y: 80, opacity: 0, x: '-50%' }}
-            animate={{ y: 0, opacity: 1, x: '-50%' }}
-            exit={{ y: 80, opacity: 0, x: '-50%' }}
-            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            initial={{ y: 80, opacity: 0, x: '-50%', scale: 1 }}
+            animate={{ 
+              y: 0, 
+              opacity: 1, 
+              x: '-50%',
+              scale: [1, 1.02, 1, 1.02, 1],
+            }}
+            exit={{ y: 80, opacity: 0, x: '-50%', scale: 1 }}
+            transition={{ 
+              y: { type: 'spring', damping: 25, stiffness: 200 },
+              scale: {
+                repeat: Infinity,
+                duration: 2.5,
+                ease: "easeInOut",
+              }
+            }}
             id="install-banner-wrapper"
             onClick={() => setShowModal(true)}
-            className="fixed bottom-[74px] left-1/2 z-40 w-[92%] max-w-[390px] h-[52px] bg-gradient-to-r from-[#de2222] to-[#eb3a44] text-white rounded-full flex items-center justify-between shadow-xl cursor-pointer pl-2 pr-2 border border-white/5"
+            className="fixed bottom-[114px] left-1/2 z-40 w-[72%] max-w-[210px] h-[30px] bg-gradient-to-r from-[#ffca05] via-[#ffbd02] to-[#f29f05] text-white rounded-full flex-row flex items-center justify-between shadow-[0_4px_12px_rgba(242,159,5,0.4)] cursor-pointer pl-1 pr-1 border border-[#ffe066]/60"
           >
-            {/* Download Icon in White Badge */}
-            <div className="w-9 h-9 min-w-[36px] bg-white rounded-full flex items-center justify-center shadow-md relative flex-shrink-0 select-none">
-              <Download className="text-[#de2222] stroke-[3]" size={16} />
+            {/* High-fidelity round badge icon featuring the Neon Trade Logo */}
+            <div className="w-[22px] h-[22px] min-w-[22px] bg-[#330c0e] rounded-full overflow-hidden border border-[#ffca05]/40 flex items-center justify-center p-0.5 shadow-md flex-shrink-0 select-none">
+              <img
+                src={gameLogo}
+                alt="Neon Trade Logo"
+                className="w-full h-full object-contain filter drop-shadow-[0_1px_3px_rgba(0,0,0,0.5)] scale-110"
+                referrerPolicy="no-referrer"
+              />
             </div>
 
-            {/* Captivating text content */}
-            <div className="flex-1 ml-3 text-left leading-tight py-0.5">
-              <span className="text-[12px] font-black text-white tracking-wide block uppercase font-sans select-none">
-                {lang === 'en' ? 'Download APP for a Better' : 'बेहतर अनुभव के लिए'}
-              </span>
-              <span className="text-[12px] font-black text-white tracking-wide block uppercase font-sans select-none">
-                {lang === 'en' ? 'Experience' : 'ऐप डाउनलोड करें'}
-              </span>
+            {/* Direct clean text display with heavy drop shadow to make white text on yellow background extremely high contrast and readable */}
+            <div className="flex-1 text-center font-[900] text-[9.2px] tracking-wider uppercase pr-1.5 drop-shadow-[0_1.5px_2px_rgba(0,0,0,0.6)] font-sans select-none">
+              {lang === 'en' ? 'Add to Desktop' : 'डेस्कटॉप पर जोड़ें'}
             </div>
 
-            {/* Close Button wrapped in translucent circle */}
+            {/* Compact close button in translucent circle */}
             <button
-              onClick={handleDismiss}
-              className="w-7 h-7 rounded-full bg-black/15 hover:bg-black/25 flex items-center justify-center transition-colors mr-1 cursor-pointer"
-              aria-label="Dismiss"
+               onClick={handleDismiss}
+               className="w-4 h-4 min-w-[16px] rounded-full bg-black/20 hover:bg-black/30 flex items-center justify-center transition-colors mr-0.5 cursor-pointer flex-shrink-0"
+               aria-label="Dismiss"
             >
-              <X size={15} className="text-white/94 stroke-[2.5]" />
+              <X size={7.5} className="text-white/94 stroke-[3.5]" />
             </button>
           </motion.div>
         )}

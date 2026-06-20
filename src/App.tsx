@@ -7362,7 +7362,7 @@ export default function App() {
       )}
 
       {/* Progressive Web App (PWA) Quick Install banner and modal overlay */}
-      <QuickInstall selectedLang={selectedLang} />
+      <QuickInstall selectedLang={selectedLang} currentTab={currentTab} />
 
       {/* 200 Deposit Required Warning Modal */}
       <AnimatePresence>
