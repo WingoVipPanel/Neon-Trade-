@@ -19,6 +19,32 @@ export default function QuickInstall({ selectedLang, currentTab }: QuickInstallP
 
   const lang = selectedLang || 'en';
 
+  const triggerRealOrSimulatedInstall = async () => {
+    if (deferredPrompt) {
+      try {
+        setShowModal(false);
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        console.log(`User prompt choice outcome: ${outcome}`);
+        if (outcome === 'accepted') {
+          setIsInstalled(true);
+          setShowBanner(false);
+          sessionStorage.setItem('wt_app_installed', 'true');
+        }
+      } catch (err) {
+        console.error('Error invoking native prompt:', err);
+        // Fallback to Chrome Simulation
+        setShowModal(false);
+        setShowChromePrompt(true);
+      }
+      setDeferredPrompt(null);
+    } else {
+      // Show Chrome dialog simulation for iframe/non-PWA context
+      setShowModal(false);
+      setShowChromePrompt(true);
+    }
+  };
+
   useEffect(() => {
     // Force clear old persistent localStorage values to ensure the user gets to see the banner immediately
     localStorage.removeItem('wt_app_installed');
@@ -40,7 +66,7 @@ export default function QuickInstall({ selectedLang, currentTab }: QuickInstallP
     };
 
     const handleTriggerInstall = () => {
-      setShowModal(true);
+      triggerRealOrSimulatedInstall();
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -68,7 +94,7 @@ export default function QuickInstall({ selectedLang, currentTab }: QuickInstallP
       window.removeEventListener('appinstalled', handleAppInstalled);
       window.removeEventListener('trigger-quick-install', handleTriggerInstall);
     };
-  }, []);
+  }, [deferredPrompt]); // re-bind to lock the latest state handle correctly
 
   const handleDismiss = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -76,49 +102,10 @@ export default function QuickInstall({ selectedLang, currentTab }: QuickInstallP
     sessionStorage.setItem('wt_install_dismissed_v3', 'true');
   };
 
-  const triggerRealOrSimulatedInstall = async () => {
-    if (deferredPrompt) {
-      try {
-        setShowModal(false);
-        deferredPrompt.prompt();
-        const { outcome } = await deferredPrompt.userChoice;
-        console.log(`User prompt choice outcome: ${outcome}`);
-        if (outcome === 'accepted') {
-          setIsInstalled(true);
-          setShowBanner(false);
-          sessionStorage.setItem('wt_app_installed', 'true');
-        }
-      } catch (err) {
-        console.error('Error invoking native prompt:', err);
-        // Fallback to Chrome Simulation
-        setShowModal(false);
-        setShowChromePrompt(true);
-      }
-      setDeferredPrompt(null);
-    } else {
-      // Show Chrome dialog simulation for iframe/non-PWA context
-      setShowModal(false);
-      setShowChromePrompt(true);
-    }
-  };
-
   const handleSimulatedInstallSubmit = () => {
     // Start installation progress sequence
     setShowChromePrompt(false);
     setInstallProgress(0);
-    
-    // Trigger download of blank mock .apk as secondary backup file download so user actually sees native apk downloading!
-    try {
-      const blob = new Blob(["13LGAME Application Package"], { type: "application/vnd.android.package-archive" });
-      const link = document.createElement("a");
-      link.href = URL.createObjectURL(blob);
-      link.download = "13LGAME.apk";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } catch (err) {
-      console.error("APK download fallback skipped", err);
-    }
 
     let progress = 0;
     const interval = setInterval(() => {
@@ -165,7 +152,7 @@ export default function QuickInstall({ selectedLang, currentTab }: QuickInstallP
               }
             }}
             id="install-banner-wrapper"
-            onClick={() => setShowModal(true)}
+            onClick={triggerRealOrSimulatedInstall}
             className="fixed bottom-[114px] left-1/2 z-40 w-[72%] max-w-[210px] h-[30px] bg-gradient-to-r from-[#ffca05] via-[#ffbd02] to-[#f29f05] text-white rounded-full flex-row flex items-center justify-between shadow-[0_4px_12px_rgba(242,159,5,0.4)] cursor-pointer pl-1 pr-1 border border-[#ffe066]/60"
           >
             {/* High-fidelity round badge icon featuring the Neon Trade Logo */}
@@ -283,10 +270,10 @@ export default function QuickInstall({ selectedLang, currentTab }: QuickInstallP
                 {/* Vertical detail stack */}
                 <div className="flex flex-col justify-center leading-tight">
                   <span className="text-base font-medium text-slate-900 font-sans leading-none">
-                    13LGAME
+                    Neon Trade
                   </span>
                   <span className="text-[12.5px] text-slate-500 font-normal leading-none mt-1.5">
-                    13lwin19.com
+                    neon-trade.vercel.app
                   </span>
                 </div>
               </div>
