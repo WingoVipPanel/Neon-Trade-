@@ -1583,7 +1583,7 @@ export default function App() {
            ['30s','1m','3m','5m'].forEach(r => {
                 const roomSecs = r === '30s' ? 30 : r === '1m' ? 60 : r === '3m' ? 180 : 300;
                 const expectedLastPeriod = getPeriodForTime(Math.floor(Date.now() / 1000) - roomSecs, r);
-                if (!np[r] || np[r].length === 0 || np[r][0]?.period !== expectedLastPeriod) {
+                if (!np[r] || np[r].length === 0 || np[r][0]?.period !== expectedLastPeriod || String(np[r][0]?.period || '').length !== 17) {
                     np[r] = constructFallbackHistory(r, 50);
                 }
            });
@@ -1627,11 +1627,16 @@ export default function App() {
   const getPeriodForTime = (time, room) => {
     const pDate = new Date(time * 1000);
     const minOfDay = pDate.getUTCHours() * 60 + pDate.getUTCMinutes();
-    let issue = 10001 + (minOfDay * 2) + Math.floor(pDate.getUTCSeconds() / 30);
-    if (room === '1m') issue = 10001 + minOfDay;
-    else if (room === '3m') issue = 10001 + Math.floor(minOfDay / 3);
-    else if (room === '5m') issue = 10001 + Math.floor(minOfDay / 5);
-    return pDate.getUTCFullYear() + String(pDate.getUTCMonth() + 1).padStart(2, '0') + String(pDate.getUTCDate()).padStart(2, '0') + issue;
+    let seq = (minOfDay * 2) + Math.floor(pDate.getUTCSeconds() / 30);
+    if (room === '1m') seq = minOfDay;
+    else if (room === '3m') seq = Math.floor(minOfDay / 3);
+    else if (room === '5m') seq = Math.floor(minOfDay / 5);
+    
+    const yyyy = pDate.getUTCFullYear();
+    const mm = String(pDate.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(pDate.getUTCDate()).padStart(2, '0');
+    
+    return `${yyyy}${mm}${dd}10001${String(seq).padStart(4, '0')}`;
   };
 
   const generateDeterministicResult = (room, periodStr) => {
@@ -1656,13 +1661,8 @@ export default function App() {
      if (room === '5m') roomSecs = 300;
      
      for (let i = 0; i < count; i++) {
-        const pDate = new Date((nowTs - ((i+1) * roomSecs)) * 1000);
-        const minOfDay = pDate.getUTCHours() * 60 + pDate.getUTCMinutes();
-        let issue = 10001 + (minOfDay * 2) + Math.floor(pDate.getUTCSeconds() / 30);
-        if (room === '1m') issue = 10001 + minOfDay;
-        else if (room === '3m') issue = 10001 + Math.floor(minOfDay / 3);
-        else if (room === '5m') issue = 10001 + Math.floor(minOfDay / 5);
-        const period = pDate.getUTCFullYear() + String(pDate.getUTCMonth() + 1).padStart(2, '0') + String(pDate.getUTCDate()).padStart(2, '0') + issue;
+        const targetTs = nowTs - ((i + 1) * roomSecs);
+        const period = getPeriodForTime(targetTs, room);
         history.push(generateDeterministicResult(room, period));
      }
      return history;
@@ -1767,7 +1767,7 @@ export default function App() {
                 const expectedLastPeriod = getPeriodForTime(Math.floor(Date.now() / 1000) - roomSecs, room);
                 
                 // If local state doesn't have the current period's latest completed result, regenerate beautiful continuous series
-                if (currentHistory.length === 0 || currentHistory[0]?.period !== expectedLastPeriod) {
+                if (currentHistory.length === 0 || currentHistory[0]?.period !== expectedLastPeriod || String(currentHistory[0]?.period || '').length !== 17) {
                   const fallbackHistory = constructFallbackHistory(room, 50);
                   const newState = { ...prev, [room]: fallbackHistory };
                   localStorage.setItem('wingo_history', JSON.stringify(newState));
