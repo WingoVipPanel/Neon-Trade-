@@ -18,6 +18,7 @@ export default function QuickInstall({ selectedLang, currentTab }: QuickInstallP
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
   const lang = selectedLang || 'en';
+  const isInIframe = typeof window !== 'undefined' && window.self !== window.top;
 
   const triggerRealOrSimulatedInstall = async () => {
     if (deferredPrompt) {
@@ -277,6 +278,26 @@ export default function QuickInstall({ selectedLang, currentTab }: QuickInstallP
                   </span>
                 </div>
               </div>
+
+              {/* Informative Iframe / Native Prompt guide */}
+              {isInIframe && (
+                <div className="mb-5 p-3 rounded-2xl bg-amber-50 border border-amber-200/80 text-left text-[11px] leading-relaxed text-amber-900 font-sans">
+                  <p className="font-extrabold flex items-center gap-1.5 mb-1 text-amber-800">
+                    <span className="text-sm">⚠️</span>
+                    <span>Preview Mode (Iframe Restricted)</span>
+                  </p>
+                  <p className="mb-2 font-medium opacity-90">
+                    Chrome blocks native app installations inside secure preview frames. To test the real native prompt installation:
+                  </p>
+                  <ol className="list-decimal pl-4 mb-2.5 font-bold space-y-1 text-amber-950">
+                    <li>Click the <strong>"Open in New Tab" ↗️</strong> button at the top-right of the screen.</li>
+                    <li>Inside the new tab, click this same <strong>"Add to Desktop"</strong> button!</li>
+                  </ol>
+                  <div className="border-t border-amber-200/60 pt-2 font-normal text-amber-800">
+                    <strong className="font-extrabold text-[#b45309]">हिंदी निर्देश:</strong> असली Chrome "Add to Home Screen" पॉपअप देखने के लिए ऊपर दाईं ओर <strong>'Open in New Tab' ↗️</strong> पर क्लिक करें, और फिर वहां इस बटन को दबाएं!
+                  </div>
+                </div>
+              )}
 
               {/* Simulated browser CTA Buttons */}
               <div className="flex items-center justify-end gap-5 text-sm font-semibold">
