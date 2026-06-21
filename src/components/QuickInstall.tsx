@@ -47,10 +47,6 @@ export default function QuickInstall({ selectedLang, currentTab }: QuickInstallP
   };
 
   useEffect(() => {
-    // Force clear old persistent localStorage values to ensure the user gets to see the banner immediately
-    localStorage.removeItem('wt_app_installed');
-    localStorage.removeItem('wt_install_dismissed_v3');
-
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e);
@@ -74,6 +70,17 @@ export default function QuickInstall({ selectedLang, currentTab }: QuickInstallP
     window.addEventListener('appinstalled', handleAppInstalled);
     window.addEventListener('trigger-quick-install', handleTriggerInstall);
 
+    // Automatic modal display delay timer (2.5 seconds on page load)
+    let autoPromptTimer: NodeJS.Timeout;
+    const dismissed = localStorage.getItem('pwa_install_dismissed') === 'true' || sessionStorage.getItem('wt_install_dismissed_v3') === 'true';
+    const isAlreadyInstalled = sessionStorage.getItem('wt_app_installed') === 'true';
+
+    if (!dismissed && !isAlreadyInstalled) {
+      autoPromptTimer = setTimeout(() => {
+        setShowModal(true);
+      }, 2500); // 2.5 seconds delay
+    }
+
     // Initial check display mode
     if (
       window.matchMedia('(display-mode: standalone)').matches ||
@@ -84,13 +91,13 @@ export default function QuickInstall({ selectedLang, currentTab }: QuickInstallP
       setShowBanner(true);
     }
 
-    // Check sessionStorage if dismissed in this session
-    const dismissed = sessionStorage.getItem('wt_install_dismissed_v3');
-    if (dismissed === 'true') {
+    // Check if dismissed
+    if (sessionStorage.getItem('wt_install_dismissed_v3') === 'true' || localStorage.getItem('pwa_install_dismissed') === 'true') {
       setShowBanner(false);
     }
 
     return () => {
+      if (autoPromptTimer) clearTimeout(autoPromptTimer);
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
       window.removeEventListener('trigger-quick-install', handleTriggerInstall);
@@ -100,6 +107,7 @@ export default function QuickInstall({ selectedLang, currentTab }: QuickInstallP
   const handleDismiss = (e: React.MouseEvent) => {
     e.stopPropagation();
     setShowBanner(false);
+    localStorage.setItem('pwa_install_dismissed', 'true');
     sessionStorage.setItem('wt_install_dismissed_v3', 'true');
   };
 
@@ -204,6 +212,19 @@ export default function QuickInstall({ selectedLang, currentTab }: QuickInstallP
               transition={{ type: 'spring', damping: 25, stiffness: 220 }}
               className="relative w-full max-w-[315px] bg-white text-slate-800 rounded-[32px] p-6 shadow-2xl flex flex-col items-center select-none border border-slate-100"
             >
+              {/* Close Button at top-right */}
+              <button
+                onClick={() => {
+                  setShowModal(false);
+                  localStorage.setItem('pwa_install_dismissed', 'true');
+                  sessionStorage.setItem('wt_install_dismissed_v3', 'true');
+                }}
+                className="absolute top-4 right-4 w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors cursor-pointer text-slate-400 hover:text-slate-600"
+                aria-label="Close"
+              >
+                <X size={14} className="stroke-[2.5]" />
+              </button>
+
               {/* Lightning symbol and Heading */}
               <div className="flex items-center gap-2 mt-4 mb-2">
                 <span className="text-[#f43f5e] text-2xl font-black">⚡</span>
@@ -224,6 +245,18 @@ export default function QuickInstall({ selectedLang, currentTab }: QuickInstallP
                 className="w-full py-3.5 bg-gradient-to-r from-[#de2222] to-[#eb3a44] hover:brightness-105 active:brightness-95 active:scale-97 text-white font-black rounded-2xl text-base uppercase tracking-wider transition-all duration-150 shadow-lg shadow-red-500/15 cursor-pointer text-center leading-none"
               >
                 {lang === 'en' ? 'Install' : 'इंस्टॉल'}
+              </button>
+
+              {/* Not Now cancel option */}
+              <button
+                onClick={() => {
+                  setShowModal(false);
+                  localStorage.setItem('pwa_install_dismissed', 'true');
+                  sessionStorage.setItem('wt_install_dismissed_v3', 'true');
+                }}
+                className="mt-4 text-xs font-bold text-slate-400 hover:text-slate-600 uppercase tracking-widest cursor-pointer transition-colors"
+              >
+                {lang === 'en' ? 'Not Now' : 'अभी नहीं'}
               </button>
             </motion.div>
           </div>
