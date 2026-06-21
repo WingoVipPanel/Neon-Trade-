@@ -153,7 +153,7 @@ export default function QuickInstall({ selectedLang, currentTab }: QuickInstallP
               }
             }}
             id="install-banner-wrapper"
-            onClick={triggerRealOrSimulatedInstall}
+            onClick={() => setShowModal(true)}
             className="fixed bottom-[114px] left-1/2 z-40 w-[72%] max-w-[210px] h-[30px] bg-gradient-to-r from-[#ffca05] via-[#ffbd02] to-[#f29f05] text-white rounded-full flex-row flex items-center justify-between shadow-[0_4px_12px_rgba(242,159,5,0.4)] cursor-pointer pl-1 pr-1 border border-[#ffe066]/60"
           >
             {/* High-fidelity round badge icon featuring the Neon Trade Logo */}
@@ -280,21 +280,38 @@ export default function QuickInstall({ selectedLang, currentTab }: QuickInstallP
               </div>
 
               {/* Informative Iframe / Native Prompt guide */}
-              {isInIframe && (
-                <div className="mb-5 p-3 rounded-2xl bg-amber-50 border border-amber-200/80 text-left text-[11px] leading-relaxed text-amber-900 font-sans">
-                  <p className="font-extrabold flex items-center gap-1.5 mb-1 text-amber-800">
+              {isInIframe ? (
+                <div className="mb-5 p-3.5 rounded-2xl bg-amber-50 border border-amber-200/80 text-left text-[11.5px] leading-relaxed text-amber-900 font-sans">
+                  <p className="font-extrabold flex items-center gap-1.5 mb-1.5 text-amber-800">
                     <span className="text-sm">⚠️</span>
                     <span>Preview Mode (Iframe Restricted)</span>
                   </p>
-                  <p className="mb-2 font-medium opacity-90">
-                    Chrome blocks native app installations inside secure preview frames. To test the real native prompt installation:
+                  <p className="mb-2 font-semibold opacity-90">
+                    Chrome blocks native app installations inside secure preview frames. To trigger the real browser "Add to Home Screen" install prompt:
                   </p>
                   <ol className="list-decimal pl-4 mb-2.5 font-bold space-y-1 text-amber-950">
-                    <li>Click the <strong>"Open in New Tab" ↗️</strong> button at the top-right of the screen.</li>
-                    <li>Inside the new tab, click this same <strong>"Add to Desktop"</strong> button!</li>
+                    <li>Click the <strong>"Open in New Tab" ↗️</strong> button at the top-right of your screen.</li>
+                    <li>Inside the new tab, click this same <strong>"Add to Desktop"</strong> yellow button!</li>
                   </ol>
                   <div className="border-t border-amber-200/60 pt-2 font-normal text-amber-800">
                     <strong className="font-extrabold text-[#b45309]">हिंदी निर्देश:</strong> असली Chrome "Add to Home Screen" पॉपअप देखने के लिए ऊपर दाईं ओर <strong>'Open in New Tab' ↗️</strong> पर क्लिक करें, और फिर वहां इस बटन को दबाएं!
+                  </div>
+                </div>
+              ) : (
+                <div className="mb-5 p-3.5 rounded-2xl bg-indigo-50 border border-indigo-200/80 text-left text-[11.5px] leading-relaxed text-indigo-900 font-sans">
+                  <p className="font-extrabold flex items-center gap-1.5 mb-1.5 text-indigo-800 animate-pulse">
+                    <span className="text-sm">✨</span>
+                    <span>How to Install / कैसे इंस्टॉल करें</span>
+                  </p>
+                  <p className="mb-2 font-semibold text-indigo-950">
+                    If the browser does not show the popup automatically, please install manually:
+                  </p>
+                  <ul className="list-disc pl-4 mb-2.5 font-bold space-y-1 text-indigo-950">
+                    <li><strong>Android/Chrome:</strong> Click the three dots <span className="font-black text-xs">⋮</span> in top-right energy bar, and select <strong>"Add to Home screen"</strong> or <strong>"Install app"</strong>.</li>
+                    <li><strong>iPhone/Safari:</strong> Click the <span className="font-black">Share 📤</span> button in the bottom bar, then select <strong>"Add to Home Screen"</strong>.</li>
+                  </ul>
+                  <div className="border-t border-indigo-200/60 pt-2 font-normal text-indigo-800">
+                    <strong className="font-extrabold text-[#4f46e5]">हिंदी निर्देश:</strong> अगर अपने आप पॉपअप नहीं आता है, तो Chrome में ऊपर दाईं ओर तीन डॉट्स <span className="font-black">⋮</span> पर क्लिक करके <strong>'Add to Home screen'</strong> या <strong>'Install app'</strong> चुनें!
                   </div>
                 </div>
               )}

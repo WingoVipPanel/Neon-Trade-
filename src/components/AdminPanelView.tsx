@@ -271,7 +271,7 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
   useEffect(() => {
     let active = true;
     const socket = io({
-      transports: ['websocket'],
+      transports: ['polling', 'websocket'],
       reconnectionAttempts: Infinity,
       timeout: 20000,
       autoConnect: true
