@@ -60,6 +60,7 @@ export default function QuickInstall({ selectedLang, currentTab }: QuickInstallP
       setShowChromePrompt(false);
       setShowBanner(false);
       sessionStorage.setItem('wt_app_installed', 'true');
+      localStorage.setItem('pwa_installed_real', 'true');
     };
 
     const handleTriggerInstall = () => {
@@ -73,7 +74,10 @@ export default function QuickInstall({ selectedLang, currentTab }: QuickInstallP
     // Automatic modal display delay timer (2.5 seconds on page load)
     let autoPromptTimer: NodeJS.Timeout;
     const dismissed = localStorage.getItem('pwa_install_dismissed') === 'true' || sessionStorage.getItem('wt_install_dismissed_v3') === 'true';
-    const isAlreadyInstalled = sessionStorage.getItem('wt_app_installed') === 'true';
+    const isAlreadyInstalled = sessionStorage.getItem('wt_app_installed') === 'true' || 
+                               localStorage.getItem('pwa_installed_real') === 'true' || 
+                               window.matchMedia('(display-mode: standalone)').matches || 
+                               (window.navigator as any).standalone === true;
 
     if (!dismissed && !isAlreadyInstalled) {
       autoPromptTimer = setTimeout(() => {
@@ -82,12 +86,11 @@ export default function QuickInstall({ selectedLang, currentTab }: QuickInstallP
     }
 
     // Initial check display mode
-    if (
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (window.navigator as any).standalone === true ||
-      sessionStorage.getItem('wt_app_installed') === 'true'
-    ) {
-      setIsInstalled(false); // Enable visibility even in standalone for testing/viewing
+    if (isAlreadyInstalled) {
+      setIsInstalled(true); // Disable visibility if already installed
+      setShowBanner(false);
+      setShowModal(false);
+    } else {
       setShowBanner(true);
     }
 
