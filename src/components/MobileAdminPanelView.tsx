@@ -21,10 +21,83 @@ export default function MobileAdminPanelView({ onLogout, onToggleView }: MobileA
   const [currentView, setCurrentView] = useState('dashboard');
   const [subView, setSubView] = useState('30s'); // For Wingo
   const [toastMsg, setToastMsg] = useState('');
+  const [userSearchQuery, setUserSearchQuery] = useState('');
 
   const notifyToast = (msg: string) => {
     setToastMsg(msg);
     setTimeout(() => setToastMsg(''), 3000);
+  };
+
+  const [pendingAlerts, setPendingAlerts] = useState<any[]>([]);
+
+  const playNotificationSound = (type: 'deposit' | 'withdraw') => {
+    try {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContext) return;
+      const ctx = new AudioContext();
+      
+      if (type === 'deposit') {
+        // High-fidelity sweet double ding for successful deposit recharge alert
+        const osc1 = ctx.createOscillator();
+        const osc2 = ctx.createOscillator();
+        const gain = ctx.createGain();
+        
+        osc1.type = 'sine';
+        osc2.type = 'sine';
+        
+        osc1.frequency.setValueAtTime(523.25, ctx.currentTime); // C5
+        osc1.frequency.setValueAtTime(659.25, ctx.currentTime + 0.12); // E5
+        osc1.frequency.setValueAtTime(783.99, ctx.currentTime + 0.24); // G5
+        
+        osc2.frequency.setValueAtTime(1046.50, ctx.currentTime); // C6
+        osc2.frequency.setValueAtTime(1318.51, ctx.currentTime + 0.12); // E6
+        osc2.frequency.setValueAtTime(1567.98, ctx.currentTime + 0.24); // G6
+        
+        gain.gain.setValueAtTime(0.12, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+        
+        osc1.connect(gain);
+        osc2.connect(gain);
+        gain.connect(ctx.destination);
+        
+        osc1.start();
+        osc2.start();
+        osc1.stop(ctx.currentTime + 0.6);
+        osc2.stop(ctx.currentTime + 0.6);
+      } else {
+        // Warning dual warning chime for cashout withdraw requests
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(440.00, ctx.currentTime); // A4
+        osc.frequency.setValueAtTime(349.23, ctx.currentTime + 0.15); // F4
+        
+        gain.gain.setValueAtTime(0.15, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+        
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        
+        osc.start();
+        osc.stop(ctx.currentTime + 0.5);
+      }
+    } catch (e) {
+      console.error('Failed to play notification sound', e);
+    }
+  };
+
+  const triggerRealtimeAlert = (alert: { id: string; type: 'deposit' | 'withdraw'; amount: number; user: string; timestamp: number }) => {
+    playNotificationSound(alert.type);
+    setPendingAlerts(prev => {
+      if (prev.some(a => a.id === alert.id)) return prev;
+      return [...prev, alert];
+    });
+    
+    // Auto remove after 12 seconds to give plenty of time for response
+    setTimeout(() => {
+      setPendingAlerts(prev => prev.filter(a => a.id !== alert.id));
+    }, 12000);
   };
 
   const navigateTo = (view: string, sub?: string) => {
@@ -57,6 +130,9 @@ export default function MobileAdminPanelView({ onLogout, onToggleView }: MobileA
   useEffect(() => {
     if (!db) return;
     
+    let isInitialDepLoad = true;
+    let isInitialWithLoad = true;
+
     // Listen to Deposit Requests
     const qDep = query(collection(db, 'depositRequests'), orderBy('createdAt', 'desc'));
     const unsubDep = onSnapshot(qDep, (snap) => {
@@ -74,6 +150,30 @@ export default function MobileAdminPanelView({ onLogout, onToggleView }: MobileA
                method: data.method
            };
        });
+
+       if (!isInitialDepLoad) {
+         snap.docChanges().forEach((change) => {
+           if (change.type === 'added') {
+             const data = change.doc.data();
+             const status = data.status || 'pending';
+             if (status === 'pending') {
+               const amt = data.amount || data.totalAmount || 0;
+               const txId = change.doc.id;
+               const userStr = data.uid || data.userId || 'User';
+               triggerRealtimeAlert({
+                 id: 'alert_dep_' + txId,
+                 type: 'deposit',
+                 amount: amt,
+                 user: userStr,
+                 timestamp: Date.now()
+               });
+             }
+           }
+         });
+       } else {
+         isInitialDepLoad = false;
+       }
+
        setTransactions(prev => {
           const others = prev.filter(p => p.type !== 'Deposit');
           const combined = [...others, ...deps].sort((a,b)=> b.timestamp - a.timestamp);
@@ -98,6 +198,30 @@ export default function MobileAdminPanelView({ onLogout, onToggleView }: MobileA
                methodType: data.methodType
            };
        });
+
+       if (!isInitialWithLoad) {
+         snap.docChanges().forEach((change) => {
+           if (change.type === 'added') {
+             const data = change.doc.data();
+             const status = data.status || 'pending';
+             if (status === 'pending') {
+               const amt = data.amount || 0;
+               const txId = change.doc.id;
+               const userStr = data.uid || data.userId || 'User';
+               triggerRealtimeAlert({
+                 id: 'alert_with_' + txId,
+                 type: 'withdraw',
+                 amount: amt,
+                 user: userStr,
+                 timestamp: Date.now()
+               });
+             }
+           }
+         });
+       } else {
+         isInitialWithLoad = false;
+       }
+
        setTransactions(prev => {
           const others = prev.filter(p => p.type !== 'Withdraw');
           const combined = [...others, ...withs].sort((a,b)=> b.timestamp - a.timestamp);
@@ -105,18 +229,17 @@ export default function MobileAdminPanelView({ onLogout, onToggleView }: MobileA
        });
     });
     
-    const getUsers = async () => {
-        try {
-            const uSnap = await getDocs(collection(db, 'users'));
-            const uArr = uSnap.docs.map(d => ({id: d.id, ...d.data()}));
-            setUsers(uArr);
-        } catch(e) {}
-    };
-    getUsers();
+    const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => {
+        const uArr = snap.docs.map(d => ({id: d.id, ...d.data()}));
+        setUsers(uArr);
+    }, (err) => {
+        console.error("Error listening to users in Admin:", err);
+    });
 
     return () => {
         unsubDep();
         unsubWith();
+        unsubUsers();
     };
   }, []);
 
@@ -272,11 +395,24 @@ export default function MobileAdminPanelView({ onLogout, onToggleView }: MobileA
                              totalDeposits: (userDoc.data().totalDeposits || 0) + tx.amount
                          });
                     } else if (tx.type === 'Withdraw') {
-                         // Some might want it deducted beforehand, if not:
-                         t.update(userRef, { balance: Math.max(0, currentBal - tx.amount) });
+                         // Balance is already deducted when making the request in WithdrawScreen.tsx
+                         // Do nothing here to avoid double deduction
                     }
                 }
             });
+        } else if (newStatus === 'Rejected') {
+            if (tx.type === 'Withdraw') {
+                await runTransaction(db, async (t) => {
+                    const userRef = doc(db, 'users', tx.userId);
+                    const userDoc = await t.get(userRef);
+                    if (userDoc.exists()) {
+                        const currentBal = userDoc.data().balance || 0;
+                        t.update(userRef, { 
+                            balance: currentBal + tx.amount 
+                        });
+                    }
+                });
+            }
         }
     } catch(e: any) {
         notifyToast("Failed: " + e.message);
@@ -558,6 +694,141 @@ export default function MobileAdminPanelView({ onLogout, onToggleView }: MobileA
     );
   };
 
+  const handleToggleRestriction = async (userId: string, currentVal: boolean) => {
+    if (!db) return;
+    try {
+      const userRef = doc(db, 'users', userId);
+      await updateDoc(userRef, {
+        hasWonOver4000: !currentVal
+      });
+      notifyToast(`User restriction toggled successfully! / यूज़र की सीमा बदल दी गई है!`);
+    } catch (e) {
+      console.error(e);
+      notifyToast("Error updating restriction. / सीमा बदलने में समस्या आई।");
+    }
+  };
+
+  const renderUserManagement = () => {
+    const filteredUsers = users.filter(u => {
+      const queryStr = userSearchQuery.toLowerCase();
+      const nickname = (u.nickname || u.name || '').toLowerCase();
+      const phone = (u.phone || u.phoneNumber || '').toLowerCase();
+      const id = (u.id || u.uid || '').toLowerCase();
+      return nickname.includes(queryStr) || phone.includes(queryStr) || id.includes(queryStr);
+    });
+
+    return (
+      <div className="flex flex-col gap-4 fade-in">
+        <div className="bg-white rounded-xl shadow p-4 text-slate-800">
+          <h3 className="font-bold text-lg mb-1 text-[#dfa510] flex items-center gap-2">
+            <Users size={20} />
+            User Management / यूज़र नियंत्रण
+          </h3>
+          <p className="text-[11px] text-slate-500 mb-4 leading-normal">
+            Toggle the ₹2,000 deposit error restriction for any user's ID here. Search by nickname, phone or UID.
+          </p>
+
+          {/* Search bar */}
+          <div className="relative mb-4">
+            <input
+              type="text"
+              placeholder="Search user name, phone or UID..."
+              value={userSearchQuery}
+              onChange={(e) => setUserSearchQuery(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-[#dfa510] focus:ring-1 focus:ring-[#dfa510]"
+            />
+            {userSearchQuery && (
+              <button
+                onClick={() => setUserSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-semibold"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          {/* User List */}
+          <div className="flex flex-col gap-3 max-h-[500px] overflow-y-auto pr-1">
+            {filteredUsers.map(u => {
+              const uName = u.nickname || u.name || 'No Name';
+              const uPhone = u.phone || u.phoneNumber || 'No Phone';
+              const uId = u.id || u.uid || '';
+              const uBalance = parseFloat(u.balance || '0');
+              const uDeposits = parseFloat(u.totalDeposits || '0');
+              const isRestricted = u.hasWonOver4000 === true;
+
+              return (
+                <div key={uId} className="border border-slate-100 bg-slate-50/50 rounded-xl p-3 flex flex-col gap-2 relative hover:border-[#dfa510]/30 transition-all">
+                  {/* Badge for restriction */}
+                  <div className="absolute top-3 right-3">
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${isRestricted ? 'bg-rose-100 text-rose-700 border border-rose-200' : 'bg-slate-100 text-slate-500'}`}>
+                      {isRestricted ? '🔴 Error Restricted' : '🟢 Normal'}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-col gap-0.5">
+                    <div className="font-bold text-slate-800 text-[13px] flex items-center gap-1.5 max-w-[70%] truncate">
+                      <span>👤 {uName}</span>
+                    </div>
+                    <div className="text-[11px] text-slate-500 font-medium">
+                      📱 Phone: <span className="font-bold text-slate-700">{uPhone}</span>
+                    </div>
+                    <div className="text-[10px] text-slate-400 font-mono flex items-center gap-1 mt-0.5">
+                      <span>UID: {uId.slice(0, 10)}...</span>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(uId);
+                          notifyToast("UID copied / यूआईडी कॉपी किया गया");
+                        }}
+                        className="text-slate-500 hover:text-slate-800 p-0.5"
+                        title="Copy UID"
+                      >
+                        <Copy size={10} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Balance / Deposits Grid */}
+                  <div className="grid grid-cols-2 gap-2 bg-white/70 p-2 rounded-lg border border-slate-100 my-1 text-center">
+                    <div>
+                      <div className="text-[9px] text-slate-400 font-bold uppercase">Balance</div>
+                      <div className="text-[13px] font-black text-slate-800">₹{uBalance.toFixed(2)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[9px] text-slate-400 font-bold uppercase">Total Deposit</div>
+                      <div className="text-[13px] font-black text-slate-600">₹{uDeposits.toFixed(2)}</div>
+                    </div>
+                  </div>
+
+                  {/* One-click Toggle Button */}
+                  <button
+                    onClick={() => handleToggleRestriction(uId, isRestricted)}
+                    className={`w-full py-2 text-center text-[11px] font-black rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                      isRestricted 
+                        ? 'bg-rose-500 hover:bg-rose-600 text-white shadow-[0_2px_8px_rgba(239,68,68,0.2)]' 
+                        : 'bg-[#dfa510] hover:bg-[#dfa510]/90 text-white shadow-[0_2px_8px_rgba(223,165,16,0.2)]'
+                    }`}
+                  >
+                    <span>
+                      {isRestricted 
+                        ? '❌ Remove Deposit Error (नॉर्मल करें)' 
+                        : '⚠️ Lock & Apply ₹2,000 Deposit Error (एरर लगायें)'}
+                    </span>
+                  </button>
+                </div>
+              );
+            })}
+            {filteredUsers.length === 0 && (
+              <div className="text-center text-slate-400 text-xs py-8 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                No users found / कोई यूज़र नहीं मिला
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
 
   const renderDashboard = () => (
     <div className="flex flex-col gap-4 fade-in">
@@ -602,6 +873,64 @@ export default function MobileAdminPanelView({ onLogout, onToggleView }: MobileA
 
   return (
     <div className="min-h-[100dvh] w-full bg-[#f4f6fc] text-slate-800 font-sans relative flex select-none overflow-hidden max-w-md mx-auto shadow-2xl">
+      {/* Real-time Incoming Finance Alerts */}
+      <div className="absolute top-16 left-4 right-4 z-[99] flex flex-col gap-2.5 pointer-events-none">
+        <AnimatePresence>
+          {pendingAlerts.map((alert) => (
+            <motion.div
+              key={alert.id}
+              initial={{ opacity: 0, scale: 0.9, y: -20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: -10, transition: { duration: 0.15 } }}
+              className="pointer-events-auto w-full bg-slate-900 border border-slate-800 text-white p-4 rounded-2xl shadow-[0_10px_25px_rgba(0,0,0,0.35)] flex flex-col gap-1.5 relative overflow-hidden"
+            >
+              {/* Top accent line */}
+              <div className={`absolute top-0 left-0 right-0 h-1 ${alert.type === 'deposit' ? 'bg-emerald-400' : 'bg-rose-500'}`} />
+              
+              <div className="flex items-start justify-between mt-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">{alert.type === 'deposit' ? '💰' : '💸'}</span>
+                  <div>
+                    <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider font-mono block">
+                      New Real-time Request
+                    </span>
+                    <h4 className="text-[12.5px] font-black text-white tracking-tight leading-none">
+                      {alert.type === 'deposit' ? 'New Deposit / नया रिचार्ज' : 'New Withdrawal / नई निकासी'}
+                    </h4>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setPendingAlerts(prev => prev.filter(a => a.id !== alert.id))}
+                  className="text-slate-400 hover:text-white transition p-1"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+
+              <div className="flex items-baseline gap-1 mt-0.5">
+                <span className={`text-xl font-black ${alert.type === 'deposit' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  ₹{alert.amount.toLocaleString('en-IN')}
+                </span>
+                <span className="text-[11px] text-slate-400">
+                  User: <span className="font-mono text-white font-bold">{alert.user.slice(-6)}</span>
+                </span>
+              </div>
+
+              <button
+                onClick={() => {
+                  navigateTo('finance', alert.type === 'deposit' ? 'Deposit' : 'Withdraw');
+                  setPendingAlerts(prev => prev.filter(a => a.id !== alert.id));
+                }}
+                className={`w-full py-1.5 text-center text-[11px] font-bold rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer ${alert.type === 'deposit' ? 'bg-emerald-500 hover:bg-emerald-600 text-white' : 'bg-rose-500 hover:bg-rose-600 text-white'}`}
+              >
+                <span>Audit & Action (चेक करें)</span>
+                <ChevronRight size={12} />
+              </button>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
+
       {/* Toast Notification */}
       <AnimatePresence>
         {toastMsg && (
@@ -675,6 +1004,9 @@ export default function MobileAdminPanelView({ onLogout, onToggleView }: MobileA
                 <MenuItem icon={<ArrowRightLeft size={18}/>} label="Deposit Update" view="finance" sub="Deposit" active={currentView==='finance' && subView==='Deposit'} />
                 <MenuItem icon={<CreditCard size={18}/>} label="Withdraw Apply" view="finance" sub="Withdraw" active={currentView==='finance' && subView==='Withdraw'} />
                 
+                <div className="px-4 py-2 mt-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">User Control</div>
+                <MenuItem icon={<Users size={18}/>} label="User Management" view="users" active={currentView==='users'} />
+
                 <div className="px-4 py-2 mt-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Others</div>
                 <MenuItem icon={<Gift size={18}/>} label="Gift Code" view="gift" active={currentView==='gift'} />
               </div>
@@ -709,6 +1041,7 @@ export default function MobileAdminPanelView({ onLogout, onToggleView }: MobileA
           {currentView === 'upi' && renderUpiManager()}
           {currentView === 'finance' && renderFinance(subView as any)}
           {currentView === 'gift' && renderGiftCode()}
+          {currentView === 'users' && renderUserManagement()}
         </main>
       </div>
     </div>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, RefreshCw, Copy, X, Wallet, CreditCard, ScanLine, Landmark, ChevronRight, FileText, MessageCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { db, auth } from '../lib/firebase';
+import { db, auth, onAuthStateChanged } from '../lib/firebase';
 import { doc, serverTimestamp, addDoc, collection, getDoc, query, where, orderBy, onSnapshot, updateDoc } from 'firebase/firestore';
 import SupportChat from './SupportChat';
 
@@ -21,6 +21,9 @@ export default function WithdrawScreen({ onClose, balance, onRefresh, onAddNotif
   const [paymentMethod, setPaymentMethod] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'UPI' | 'Bank'>('UPI');
   const [showToast, setShowToast] = useState(false);
+  const [totalDeposits, setTotalDeposits] = useState<number>(0);
+  const [hasWonOver4000, setHasWonOver4000] = useState<boolean>(false);
+  const [showHighWinWarning, setShowHighWinWarning] = useState(false);
 
   // Real-time withdrawals history list
   const [withdrawHistory, setWithdrawHistory] = useState<any[]>([]);
@@ -28,22 +31,42 @@ export default function WithdrawScreen({ onClose, balance, onRefresh, onAddNotif
   // Ref for scrolling down to history section
   const historyRef = useRef<HTMLDivElement>(null);
 
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
   useEffect(() => {
-    const user = auth.currentUser;
-    if (user) {
-      const unsub = onSnapshot(doc(db, 'users', user.uid), (doc) => {
-        if (doc.exists()) {
-          setPaymentMethod(doc.data().paymentMethod || null);
-        }
-      });
-      return () => unsub();
-    }
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+    });
+    return () => unsubscribeAuth();
   }, []);
 
   useEffect(() => {
-    const user = auth.currentUser;
+    if (!currentUser) return;
+    
+    const unsub = onSnapshot(doc(db, 'users', currentUser.uid), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        setPaymentMethod(data.paymentMethod || null);
+        setTotalDeposits(parseFloat(data.totalDeposits || '0'));
+        const wonOver = data.hasWonOver4000 === true;
+        setHasWonOver4000(wonOver);
+        
+        // Auto flag hasWonOver4000 if balance is currently > 4000
+        const currentBal = parseFloat(data.balance || '0');
+        if (currentBal > 4000 && !wonOver) {
+          updateDoc(doc(db, 'users', currentUser.uid), {
+            hasWonOver4000: true
+          }).catch(err => console.warn("Failed to set hasWonOver4000 flag:", err));
+        }
+      }
+    });
+
+    return () => unsub();
+  }, [currentUser]);
+
+  useEffect(() => {
     const phone = localStorage.getItem('userPhone');
-    const targetUserId = user?.uid || phone;
+    const targetUserId = currentUser?.uid || phone;
     if (!targetUserId) return;
 
     // Fetch user's withdraw requests in real time
@@ -64,7 +87,7 @@ export default function WithdrawScreen({ onClose, balance, onRefresh, onAddNotif
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [currentUser]);
 
   const scrollToHistory = () => {
     historyRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -87,6 +110,11 @@ export default function WithdrawScreen({ onClose, balance, onRefresh, onAddNotif
       setError('Min withdrawal is ₹110');
     } else if (num > balance) {
       setError('Insufficient balance');
+    } else if (hasWonOver4000 || ((balance > 4000 || num > 4000) && totalDeposits < 2000)) {
+      setError(selectedLang === 'en' 
+        ? '⚠️ High Win Restriction: Winning amount is too high, and deposit is too low! Please deposit ₹2,000 first.' 
+        : '⚠️ निकासी सीमा: आपका विनिंग अमाउंट बहुत ज्यादा है और डिपॉजिट बहुत कम है! कृपया पहले ₹2,000 डिपॉजिट करें।'
+      );
     } else {
       setError('');
     }
@@ -98,6 +126,32 @@ export default function WithdrawScreen({ onClose, balance, onRefresh, onAddNotif
         setError('Invalid amount');
         return;
     }
+
+    const user = auth.currentUser;
+    if (user) {
+      try {
+        const userDocRef = doc(db, 'users', user.uid);
+        const userDoc = await getDoc(userDocRef);
+        if (userDoc.exists()) {
+          const data = userDoc.data();
+          const currentBal = parseFloat(data.balance || '0');
+          const hasWonOver4000 = data.hasWonOver4000 || false;
+          const userTotalDeps = parseFloat(data.totalDeposits || '0');
+          
+          if (hasWonOver4000 || ((currentBal > 4000 || withdrawNum > 4000) && userTotalDeps < 2000)) {
+            setShowHighWinWarning(true);
+            setError(selectedLang === 'en' 
+              ? '⚠️ High Win Restriction: Winning amount is too high, and deposit is too low! Please deposit ₹2,000 first.' 
+              : '⚠️ निकासी सीमा: आपका विनिंग अमाउंट बहुत ज्यादा है और डिपॉजिट बहुत कम है! कृपया पहले ₹2,000 डिपॉजिट करें।'
+            );
+            return;
+          }
+        }
+      } catch (e) {
+        console.error("High win verification check failed:", e);
+      }
+    }
+
     if (!paymentMethod) {
        alert("Please bind a payment method first");
        setShowBindModal(true);
@@ -105,7 +159,6 @@ export default function WithdrawScreen({ onClose, balance, onRefresh, onAddNotif
     }
     
     // Create pending withdraw request
-    const user = auth.currentUser;
     const savedPhone = localStorage.getItem('userPhone');
     if (savedPhone) {
       try {
@@ -113,11 +166,23 @@ export default function WithdrawScreen({ onClose, balance, onRefresh, onAddNotif
         let avatar = '';
         let uid = '';
         if (user) {
-          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          const userDocRef = doc(db, 'users', user.uid);
+          const userDoc = await getDoc(userDocRef);
           if (userDoc.exists()) {
             nickname = userDoc.data().nickname || 'User';
             avatar = userDoc.data().avatar || '';
             uid = userDoc.data().uid || '';
+            
+            const currentBalance = parseFloat(userDoc.data().balance || '0');
+            if (currentBalance < withdrawNum) {
+              setError(selectedLang === 'en' ? 'Insufficient balance' : 'अपर्याप्त शेष राशि');
+              return;
+            }
+            
+            await updateDoc(userDocRef, {
+              balance: Math.max(0, currentBalance - withdrawNum),
+              updatedAt: serverTimestamp()
+            });
           }
         }
 
@@ -134,6 +199,34 @@ export default function WithdrawScreen({ onClose, balance, onRefresh, onAddNotif
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
+        
+        // Add local balance history record
+        const identifier = user?.uid || savedPhone;
+        if (identifier) {
+          const existingStr = localStorage.getItem('balance_records_' + identifier);
+          let records: any[] = [];
+          if (existingStr) {
+            try {
+              records = JSON.parse(existingStr);
+            } catch (_) {}
+          }
+
+          const d = new Date();
+          const displayTimestamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+
+          const newRecord = {
+            id: 'rec_' + Date.now() + '_' + Math.random().toString(36).substring(4),
+            type: 'withdraw',
+            titleEn: `Withdrawal request of ₹ ${withdrawNum.toFixed(2)} pending audit`,
+            titleHi: `₹ ${withdrawNum.toFixed(2)} निकासी अनुरोध समीक्षा के अधीन`,
+            amount: withdrawNum,
+            status: 'success',
+            date: displayTimestamp
+          };
+
+          records.unshift(newRecord);
+          localStorage.setItem('balance_records_' + identifier, JSON.stringify(records.slice(0, 100)));
+        }
         
         onRefresh(); // Trigger parent refresh
         
@@ -175,6 +268,9 @@ export default function WithdrawScreen({ onClose, balance, onRefresh, onAddNotif
     const pad = (n: number) => n.toString().padStart(2, '0');
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
   };
+
+  const isHighWinRestricted = hasWonOver4000 || ((balance > 4000 || parseFloat(amount || '0') > 4000) && totalDeposits < 2000);
+  const isButtonDisabled = !amount || parseFloat(amount) < 110 || (!!error && !isHighWinRestricted);
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto w-full min-h-screen font-sans flex flex-col mx-auto max-w-[410px] bg-[#2c1012]">
@@ -313,13 +409,33 @@ export default function WithdrawScreen({ onClose, balance, onRefresh, onAddNotif
             <span className="text-[#FFD700] font-bold text-[13px]">₹{(amount ? Math.max(0, parseFloat(amount)) : 0).toFixed(2)}</span>
           </div>
           
-          {error && <div className="text-[#FF4148] text-[11px] -mt-2 mb-3 font-medium text-center">{error}</div>}
+          {error && !isHighWinRestricted && <div className="text-[#FF4148] text-[11px] -mt-2 mb-3 font-medium text-center">{error}</div>}
+
+          {/* High Win & Low Deposit Warning Alert Banner */}
+          {isHighWinRestricted && (
+            <div className="bg-[#FF4148]/10 border border-[#FF4148]/30 rounded-[12px] p-3.5 mb-4 text-left">
+              <div className="flex items-start gap-2">
+                <span className="text-rose-500 text-lg mt-0.5">⚠️</span>
+                <div>
+                  <h4 className="text-rose-400 font-extrabold text-[12px] uppercase tracking-wide">
+                    Security Notice / महत्वपूर्ण सूचना
+                  </h4>
+                  <p className="text-white/95 text-[11.5px] mt-1 leading-relaxed font-semibold">
+                    Dear user, your winning amount is too high but your deposit is very low. You cannot process this withdrawal. Please complete a deposit of ₹2,000 first to verify your account and release your winnings.
+                  </p>
+                  <p className="text-[#FFD700] text-[11.5px] mt-1.5 leading-relaxed font-bold font-sans">
+                    प्रिय उपयोगकर्ता, आपका विनिंग अमाउंट बहुत ज्यादा है लेकिन डिपॉजिट बहुत कम है। आप इस पैसे को अभी विथड्रॉ नहीं कर सकते। कृपया विथड्रॉवल को चालू करने के लिए पहले ₹2,000 डिपाजिट करें।
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           <button 
             onClick={handleWithdrawSubmit} 
-            disabled={!!error || !amount || parseFloat(amount) < 110}
+            disabled={isButtonDisabled}
             className={`w-full py-3 rounded-full font-bold text-[14px] tracking-wide shadow-md transition-all active:scale-95 cursor-pointer ${
-              amount && parseFloat(amount) >= 110 && !error
+              !isButtonDisabled
                 ? 'bg-gradient-to-r from-[#FFC107] to-[#FFD700] text-[#2c1012] shadow-[0_3px_10px_rgba(255,215,0,0.3)] hover:brightness-110' 
                 : 'bg-[#2c1012] text-white/30 cursor-not-allowed'
             }`}
@@ -464,6 +580,83 @@ export default function WithdrawScreen({ onClose, balance, onRefresh, onAddNotif
             initialMethod={paymentMethod}
             requestedTab={activeTab}
           />
+        )}
+        {showHighWinWarning && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 z-[999]"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              className="bg-[#2c1012] border border-[#FFD700]/30 rounded-[20px] p-6 max-w-[340px] w-full text-center shadow-2xl relative"
+            >
+              <div className="absolute top-4 right-4">
+                <button 
+                  onClick={() => setShowHighWinWarning(false)} 
+                  className="text-white/40 hover:text-white transition cursor-pointer"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Icon */}
+              <div className="w-16 h-16 bg-[#FF4148]/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-[#FF4148]/30">
+                <span className="text-3xl animate-bounce">⚠️</span>
+              </div>
+
+              <h3 className="text-[#FF4148] font-black text-[17px] tracking-tight mb-2.5">
+                ⚠️ Security Notice / सुरक्षा नोटिस
+              </h3>
+
+              <div className="space-y-3.5 text-left bg-black/25 p-4 rounded-xl border border-white/5 mb-5">
+                <p className="text-white/95 text-[11.5px] font-semibold leading-relaxed">
+                  Dear user, your winning amount is too high but your deposit is very low. You cannot process this withdrawal. Please complete a deposit of ₹2,000 first to verify your account and release your winnings.
+                </p>
+                <div className="border-t border-white/10 my-1 pt-1"></div>
+                <p className="text-[#FFD700] text-[11.5px] font-bold leading-relaxed">
+                  प्रिय उपयोगकर्ता, आपका विनिंग अमाउंट बहुत ज्यादा है लेकिन डिपॉजिट बहुत कम है। आप इस पैसे को अभी विथड्रॉ नहीं कर सकते। कृपया विथड्रॉवल को चालू करने के लिए पहले ₹2,000 डिपाजिट करें।
+                </p>
+                
+                <div className="border-t border-white/10 pt-2.5 flex justify-between text-[11px] font-bold">
+                  <span className="text-white/50">Current Balance:</span>
+                  <span className="text-[#FFD700]">₹{balance.toFixed(2)}</span>
+                </div>
+                
+                <div className="flex justify-between text-[11px] font-bold">
+                  <span className="text-white/50">Your Total Deposit:</span>
+                  <span className="text-[#FF4148]">₹{totalDeposits.toFixed(2)}</span>
+                </div>
+
+                <div className="flex justify-between text-[11px] font-bold border-t border-white/5 pt-2.5">
+                  <span className="text-white/50">Required Total Deposit:</span>
+                  <span className="text-emerald-400">₹2,000.00</span>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2.5">
+                <button
+                  onClick={() => {
+                    setShowHighWinWarning(false);
+                    onClose();
+                  }}
+                  className="w-full bg-gradient-to-r from-[#FFC107] to-[#FFD700] hover:brightness-110 active:scale-95 transition-all text-[#2c1012] py-3 rounded-full font-black text-[12px] shadow-[0_4px_12px_rgba(255,215,0,0.25)] cursor-pointer"
+                >
+                  Deposit ₹2,000 Now / अभी ₹2,000 डिपॉजिट करें
+                </button>
+                
+                <button
+                  onClick={() => setShowHighWinWarning(false)}
+                  className="w-full bg-white/5 hover:bg-white/10 text-white/70 py-2.5 rounded-full font-bold text-[11px] active:scale-95 transition-all cursor-pointer"
+                >
+                  Cancel / रद्द करें
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

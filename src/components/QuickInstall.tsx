@@ -60,7 +60,6 @@ export default function QuickInstall({ selectedLang, currentTab }: QuickInstallP
       setShowChromePrompt(false);
       setShowBanner(false);
       sessionStorage.setItem('wt_app_installed', 'true');
-      localStorage.setItem('pwa_installed_real', 'true');
     };
 
     const handleTriggerInstall = () => {
@@ -71,26 +70,13 @@ export default function QuickInstall({ selectedLang, currentTab }: QuickInstallP
     window.addEventListener('appinstalled', handleAppInstalled);
     window.addEventListener('trigger-quick-install', handleTriggerInstall);
 
-    // Automatic modal display delay timer (2.5 seconds on page load)
-    let autoPromptTimer: NodeJS.Timeout;
-    const dismissed = localStorage.getItem('pwa_install_dismissed') === 'true' || sessionStorage.getItem('wt_install_dismissed_v3') === 'true';
-    const isAlreadyInstalled = sessionStorage.getItem('wt_app_installed') === 'true' || 
-                               localStorage.getItem('pwa_installed_real') === 'true' || 
-                               window.matchMedia('(display-mode: standalone)').matches || 
-                               (window.navigator as any).standalone === true;
-
-    if (!dismissed && !isAlreadyInstalled) {
-      autoPromptTimer = setTimeout(() => {
-        setShowModal(true);
-      }, 2500); // 2.5 seconds delay
-    }
-
     // Initial check display mode
-    if (isAlreadyInstalled) {
-      setIsInstalled(true); // Disable visibility if already installed
-      setShowBanner(false);
-      setShowModal(false);
-    } else {
+    if (
+      window.matchMedia('(display-mode: standalone)').matches ||
+      (window.navigator as any).standalone === true ||
+      sessionStorage.getItem('wt_app_installed') === 'true'
+    ) {
+      setIsInstalled(false); // Enable visibility even in standalone for testing/viewing
       setShowBanner(true);
     }
 
@@ -100,7 +86,6 @@ export default function QuickInstall({ selectedLang, currentTab }: QuickInstallP
     }
 
     return () => {
-      if (autoPromptTimer) clearTimeout(autoPromptTimer);
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
       window.removeEventListener('trigger-quick-install', handleTriggerInstall);
@@ -164,7 +149,7 @@ export default function QuickInstall({ selectedLang, currentTab }: QuickInstallP
               }
             }}
             id="install-banner-wrapper"
-            onClick={() => setShowModal(true)}
+            onClick={triggerRealOrSimulatedInstall}
             className="fixed bottom-[114px] left-1/2 z-40 w-[72%] max-w-[210px] h-[30px] bg-gradient-to-r from-[#ffca05] via-[#ffbd02] to-[#f29f05] text-white rounded-full flex-row flex items-center justify-between shadow-[0_4px_12px_rgba(242,159,5,0.4)] cursor-pointer pl-1 pr-1 border border-[#ffe066]/60"
           >
             {/* High-fidelity round badge icon featuring the Neon Trade Logo */}
@@ -191,78 +176,6 @@ export default function QuickInstall({ selectedLang, currentTab }: QuickInstallP
               <X size={7.5} className="text-white/94 stroke-[3.5]" />
             </button>
           </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* 2. QUICK INSTALL POPUP MODAL (Screenshot 2) */}
-      <AnimatePresence>
-        {showModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            {/* Dark back curtains */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowModal(false)}
-              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-            />
-
-            {/* Modal Box */}
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0, y: 30 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.9, opacity: 0, y: 30 }}
-              transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-              className="relative w-full max-w-[315px] bg-white text-slate-800 rounded-[32px] p-6 shadow-2xl flex flex-col items-center select-none border border-slate-100"
-            >
-              {/* Close Button at top-right */}
-              <button
-                onClick={() => {
-                  setShowModal(false);
-                  localStorage.setItem('pwa_install_dismissed', 'true');
-                  sessionStorage.setItem('wt_install_dismissed_v3', 'true');
-                }}
-                className="absolute top-4 right-4 w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors cursor-pointer text-slate-400 hover:text-slate-600"
-                aria-label="Close"
-              >
-                <X size={14} className="stroke-[2.5]" />
-              </button>
-
-              {/* Lightning symbol and Heading */}
-              <div className="flex items-center gap-2 mt-4 mb-2">
-                <span className="text-[#f43f5e] text-2xl font-black">⚡</span>
-                <h3 className="text-[21px] font-black text-slate-900 tracking-tight font-sans">
-                  {lang === 'en' ? 'Quick Install' : 'त्वरित इंस्टॉल'}
-                </h3>
-              </div>
-
-              {/* Security shield and Verified Badge */}
-              <div className="border border-rose-200/80 bg-[#ffebee] text-[#f43f5e] font-extrabold text-[12px] px-5 py-1.5 rounded-full flex items-center gap-1 mt-1 mb-8 shadow-sm">
-                <span className="text-sm">🛡️</span>
-                <span>{lang === 'en' ? 'Activated' : 'सक्रिय'}</span>
-              </div>
-
-              {/* Install Button */}
-              <button
-                onClick={triggerRealOrSimulatedInstall}
-                className="w-full py-3.5 bg-gradient-to-r from-[#de2222] to-[#eb3a44] hover:brightness-105 active:brightness-95 active:scale-97 text-white font-black rounded-2xl text-base uppercase tracking-wider transition-all duration-150 shadow-lg shadow-red-500/15 cursor-pointer text-center leading-none"
-              >
-                {lang === 'en' ? 'Install' : 'इंस्टॉल'}
-              </button>
-
-              {/* Not Now cancel option */}
-              <button
-                onClick={() => {
-                  setShowModal(false);
-                  localStorage.setItem('pwa_install_dismissed', 'true');
-                  sessionStorage.setItem('wt_install_dismissed_v3', 'true');
-                }}
-                className="mt-4 text-xs font-bold text-slate-400 hover:text-slate-600 uppercase tracking-widest cursor-pointer transition-colors"
-              >
-                {lang === 'en' ? 'Not Now' : 'अभी नहीं'}
-              </button>
-            </motion.div>
-          </div>
         )}
       </AnimatePresence>
 
