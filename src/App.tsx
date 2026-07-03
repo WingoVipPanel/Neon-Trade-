@@ -1535,9 +1535,33 @@ export default function App() {
   // Standalone Timer & API Fallback for Static Environments (Netlify, etc.)
   const [socketConnected, setSocketConnected] = useState(false);
   const socketConnectedRef = useRef(false);
+  const [manualPredictions, setManualPredictions] = useState<{ [key: string]: number | null }>({});
+  const manualPredictionsRef = useRef<{ [key: string]: number | null }>({});
+
   useEffect(() => {
     socketConnectedRef.current = socketConnected;
   }, [socketConnected]);
+
+  // Sync predictions for serverless execution
+  useEffect(() => {
+    if (!db) return;
+    const rooms = ['30s', '1m', '3m', '5m'];
+    const unsubs = rooms.map(room => {
+       return onSnapshot(doc(db, 'globalResults', room + '_prediction'), (snap) => {
+          if (snap.exists()) {
+             const data = snap.data();
+             const val = data.nextManualResult !== undefined ? data.nextManualResult : null;
+             setManualPredictions(prev => {
+                const next = { ...prev, [room]: val };
+                manualPredictionsRef.current = next;
+                return next;
+             });
+          }
+       });
+    });
+    return () => unsubs.forEach(u => u());
+  }, []);
+
 
   useEffect(() => {
     // 1. Local Timer Computation (UTC based)
@@ -1641,10 +1665,19 @@ export default function App() {
   };
 
   const generateDeterministicResult = (room, periodStr) => {
-    let hash = 0;
-    const str = periodStr + room + "salt";
-    for (let i = 0; i < str.length; i++) hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
-    const num = Math.abs(hash) % 10;
+    let num = 0;
+    const manualNum = manualPredictionsRef.current[room];
+    if (manualNum !== undefined && manualNum !== null) {
+       num = manualNum;
+       // We can only use it once, so we clear it locally to avoid repeating
+       manualPredictionsRef.current[room] = null;
+    } else {
+       let hash = 0;
+       const str = periodStr + room + "salt";
+       for (let i = 0; i < str.length; i++) hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+       num = Math.abs(hash) % 10;
+    }
+    
     let color = '';
     if (num === 0) color = 'Red+Violet';
     else if (num === 5) color = 'Green+Violet';
@@ -4279,6 +4312,26 @@ export default function App() {
                         <span className="text-neutral-500 text-sm font-black font-mono">➔</span>
                       </div>
                     </div>
+                    {/* Item 10: Admin Panel (Only for admins) */}
+                    {isAdmin && (
+                      <div 
+                        onClick={() => setShowAdminView(true)}
+                        className="flex items-center justify-between py-3.5 px-3.5 hover:bg-[#ff3b30]/10 transition cursor-pointer active:scale-99 border-t border-[#ff3b30]/20 rounded-b-2xl"
+                        style={{ background: 'linear-gradient(90deg, rgba(255,59,48,0.1) 0%, transparent 100%)' }}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="bg-[#ff3b30]/20 p-2 rounded-xl text-[#ff3b30] border border-[#ff3b30]/20">
+                            <Settings className="h-4.5 w-4.5 animate-spin-slow" />
+                          </div>
+                          <span className="text-[14px] font-semibold text-[#ff3b30]">
+                            {selectedLang === 'en' ? 'Admin Panel' : 'एडमिन पैनल'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[#ff3b30] text-sm font-black font-mono">➔</span>
+                        </div>
+                      </div>
+                    )}
 
                   </div>
                 </div>
@@ -7364,16 +7417,7 @@ export default function App() {
         onClose={() => setWingoWinningsAlert(null)}
       />
 
-      {isLoggedIn && isAdmin && !showAdminView && (
-        <button 
-          onClick={() => setShowAdminView(true)}
-          className="fixed bottom-24 right-4 z-[9999] bg-[#ff3b30] text-white font-bold p-3.5 rounded-full shadow-2xl flex items-center justify-center gap-2 h-11 hover:bg-[#ff453a] active:scale-95 transition-all text-xs font-black tracking-wider uppercase border border-white/20 cursor-pointer shadow-[0_4px_20px_rgba(255,59,48,0.4)]"
-          title="Return to Admin Panel"
-        >
-          <Settings className="w-4 h-4 animate-spin-slow" />
-          <span>Admin Panel</span>
-        </button>
-      )}
+      
 
       {/* Progressive Web App (PWA) Quick Install banner and modal overlay */}
       {/* <QuickInstall selectedLang={selectedLang} currentTab={currentTab} /> */}

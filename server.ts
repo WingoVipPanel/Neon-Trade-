@@ -263,13 +263,19 @@ async function startServer() {
         const newRecords: WingoHistoryRecord[] = [];
         for (let i = allRecords.length - 1; i >= 0; i--) {
           const item = allRecords[i];
-          const num = parseInt(item.number);
+          let num = parseInt(item.number);
           const period = item.issueNumber;
           
           // Check if this period is already in our history
           const existsInHistory = roomData[room].history.some(h => h.period === period);
           const existsInNew = newRecords.some(r => r.period === period);
           if (!existsInHistory && !existsInNew) {
+              // Override with admin's manual prediction if set
+              if (roomData[room].nextManualResult !== undefined) {
+                num = roomData[room].nextManualResult;
+                delete roomData[room].nextManualResult;
+              }
+
               const record: WingoHistoryRecord = {
                 period: period,
                 number: num,

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { io } from 'socket.io-client';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, getDoc, runTransaction, getDocs, deleteDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, getDoc, runTransaction, getDocs, deleteDoc , setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { 
   Menu, X, Settings, Users, Gift, ChevronRight, CheckCircle, 
@@ -343,8 +343,23 @@ export default function MobileAdminPanelView({ onLogout, onToggleView }: MobileA
      activeCurrentPeriod = String(parseInt(lastPeriod) + 1);
   }
 
-  const handleConfirmNextResult = () => {
-    if (socketRef.current) socketRef.current.emit('set_prediction', { room: activeAdminRoom, number: selectedNextResult });
+  const handleConfirmNextResult = async () => {
+    if (socketRef.current) {
+        socketRef.current.emit('set_prediction', { room: activeAdminRoom, number: selectedNextResult });
+    }
+    
+    // Fallback for static environments (Firebase Hosting / Vercel)
+    if (db) {
+        try {
+            await setDoc(doc(db, 'globalResults', activeAdminRoom + '_prediction'), {
+                nextManualResult: selectedNextResult,
+                timestamp: new Date().toISOString()
+            });
+        } catch (e) {
+            console.error('Failed to save manual prediction to Firestore', e);
+        }
+    }
+
     notifyToast(selectedNextResult !== null ? `Number ${selectedNextResult} confirmed for next draw!` : `Unset prediction.`);
   };
 
