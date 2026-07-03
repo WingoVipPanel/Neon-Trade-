@@ -7,7 +7,7 @@ import {
   Menu, X, Settings, Users, Gift, ChevronRight, CheckCircle, 
   XCircle, Trash2, Plus, Edit, CreditCard, Landmark, 
   Gamepad2, ArrowLeft, ArrowRightLeft, DollarSign, LogOut, RefreshCw, LayoutDashboard, Copy, 
-  Check as CheckIcon, Info
+  Check as CheckIcon, Info, Send
 } from 'lucide-react';
 
 interface MobileAdminPanelViewProps {
@@ -254,6 +254,86 @@ export default function MobileAdminPanelView({ onLogout, onToggleView }: MobileA
   const [socketConnected, setSocketConnected] = useState(false);
   const [selectedNextResult, setSelectedNextResult] = useState<number | null>(null);
 
+  // ----------------------------------------------------------------------
+  // Derived Data
+  // ----------------------------------------------------------------------
+  const activeSecondsLeft = roomTimers[activeAdminRoom] || 0;
+  const activeDraws = roomData[activeAdminRoom]?.history || [];
+  
+  let lastPeriod = roomData[activeAdminRoom]?.lastPeriod || "20260522100012000";
+  let activeCurrentPeriod = "";
+  try {
+     if (lastPeriod.length === 17) {
+       const bp = lastPeriod.substring(0, 13);
+       const seq = lastPeriod.substring(13);
+       activeCurrentPeriod = bp + String(parseInt(seq) + 1).padStart(4, '0');
+     } else {
+       activeCurrentPeriod = (BigInt(lastPeriod) + 1n).toString();
+     }
+  } catch(e) {
+     activeCurrentPeriod = String(parseInt(lastPeriod) + 1);
+  }
+
+  // -------------------------------------------------------------
+  // Prediction Generator State
+  // -------------------------------------------------------------
+  const [predPeriod, setPredPeriod] = useState('');
+  const [predBetOn, setPredBetOn] = useState<'BIG' | 'SMALL'>('BIG');
+  const [predJackpot, setPredJackpot] = useState('7');
+  const [predCopied, setPredCopied] = useState(false);
+
+  // Sync predPeriod with current active period
+  useEffect(() => {
+    if (activeCurrentPeriod) {
+      setPredPeriod(activeCurrentPeriod.slice(-3));
+    }
+  }, [activeCurrentPeriod]);
+
+  const boldMap: Record<string, string> = {
+    'B': '𝗕', 'I': '𝗜', 'G': '𝗚',
+    'S': '𝗦', 'M': '𝗠', 'A': '𝗔', 'L': '𝗟',
+    '0': '𝟬', '1': '𝟭', '2': '𝟮', '3': '𝟯', '4': '𝟰',
+    '5': '𝟱', '6': '𝟲', '7': '𝟳', '8': '𝟴', '9': '𝟵'
+  };
+
+  const toBold = (text: string) => {
+    return text.split('').map(char => boldMap[char] || char).join('');
+  };
+
+  const generatePredictionMessage = () => {
+    const formattedBet = toBold(predBetOn);
+    const formattedPeriod = toBold(predPeriod);
+    const formattedJackpot = toBold(predJackpot);
+    const registerLink = `https://neon-trade.vercel.app?ref=451555`;
+
+    return `🚀 𝗪𝗜𝗡𝗚𝗚𝗢 ${activeAdminRoom === '30s' ? '𝟯𝟬 𝗦𝗘𝗖' : activeAdminRoom.toUpperCase().replace('M', ' 𝗠𝗜𝗡𝗨𝗧𝗘')} 🚀
+
+📊 𝗣𝗘𝗥𝗜𝗢𝗗 : ${formattedPeriod}
+
+🎯 𝗕𝗘𝗧 𝗢𝗡 : ${formattedBet}
+
+💎 𝗝𝗔𝗖𝗞𝗣𝗢𝗧 𝗡𝗨𝗠𝗕𝗘𝗥 : ${formattedJackpot}
+
+𝗥𝗘𝗚𝗜𝗦𝗧𝗘𝗥 𝗟𝗜𝗡𝗞 :
+${registerLink}`;
+  };
+
+  const handleCopyPrediction = async () => {
+    try {
+      await navigator.clipboard.writeText(generatePredictionMessage());
+      setPredCopied(true);
+      notifyToast("Message copied to clipboard!");
+      setTimeout(() => setPredCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy!', err);
+    }
+  };
+
+  const handleSharePrediction = () => {
+    const message = encodeURIComponent(generatePredictionMessage());
+    window.open(`https://wa.me/?text=${message}`, '_blank');
+  };
+
   const getNumberColorText = (num: number) => {
     if ([1, 3, 7, 9].includes(num)) return 'Green';
     if ([2, 4, 6, 8].includes(num)) return 'Red';
@@ -290,58 +370,84 @@ export default function MobileAdminPanelView({ onLogout, onToggleView }: MobileA
     } catch(e) {}
   }, []);
 
+  const activeAdminRoomRef = useRef(activeAdminRoom);
+  useEffect(() => {
+    activeAdminRoomRef.current = activeAdminRoom;
+    // When switching rooms, update the selected result from the already synced server state
+    setSelectedNextResult(serverNextPrediction[activeAdminRoom] ?? null);
+  }, [activeAdminRoom, serverNextPrediction]);
+
   // Wingo Socket Sync
   useEffect(() => {
     let active = true;
-    const socket = io({ transports: ['polling', 'websocket'], reconnectionAttempts: Infinity, timeout: 20000, autoConnect: true });
+    const socket = io({ 
+      transports: ['polling', 'websocket'], 
+      reconnectionAttempts: Infinity, 
+      timeout: 20000, 
+      autoConnect: true 
+    });
     socketRef.current = socket;
 
     socket.on('connect', () => { if(active) setSocketConnected(true); });
     socket.on('disconnect', () => { if(active) setSocketConnected(false); });
-    socket.on('initial_data', (rData: any) => { if(active) setRoomData(rData); });
-    socket.on('timer_sync', ({ room, time }: any) => { if (active) setRoomTimers(prev => ({ ...prev, [room]: time })); });
+    
+    socket.on('initial_data', (rData: any) => { 
+      if(active) {
+        setRoomData(rData);
+        // Also sync the predictions
+        const preds: Record<string, number | null> = {};
+        Object.keys(rData).forEach(r => {
+          preds[r] = rData[r].nextManualResult ?? null;
+        });
+        setServerNextPrediction(preds);
+        // Set initial selected result for the current active room
+        const currentRoom = activeAdminRoomRef.current;
+        if (preds[currentRoom] !== undefined) {
+          setSelectedNextResult(preds[currentRoom]);
+        }
+      }
+    });
+
+    socket.on('timer_sync', ({ room, time }: any) => { 
+      if (active) setRoomTimers(prev => ({ ...prev, [room]: time })); 
+    });
+
     socket.on('prediction_updated', ({ room, nextManualResult }: any) => {
        if (active) {
-         setServerNextPrediction(prev => ({ ...prev, [room]: nextManualResult }));
-         if (activeAdminRoom === room) setSelectedNextResult(nextManualResult ?? null);
+         setServerNextPrediction(prev => ({ ...prev, [room]: nextManualResult ?? null }));
+         if (activeAdminRoomRef.current === room) {
+           setSelectedNextResult(nextManualResult ?? null);
+         }
        }
     });
+
     socket.on('new_result', ({ room, result }: any) => {
        if (active) {
          setRoomData(prev => {
-             let state = { ...prev };
+             const state = { ...prev };
              if (state[room]) {
-                 state[room].history = [result, ...(state[room].history || []).filter((h: any) => h.period !== result.period)].slice(0, 50);
-                 state[room].lastPeriod = result.period;
+                 const oldHistory = state[room].history || [];
+                 // Deduplicate by period
+                 if (!oldHistory.some((h: any) => h.period === result.period)) {
+                    state[room].history = [result, ...oldHistory].slice(0, 500);
+                    state[room].lastPeriod = result.period;
+                 }
              }
              return state;
          });
        }
     });
-    return () => { active = false; socket.disconnect(); };
-  }, [activeAdminRoom]);
+
+    return () => { 
+      active = false; 
+      socket.disconnect(); 
+    };
+  }, []); // Run once
 
 
   // ----------------------------------------------------------------------
   // RENDER HELPERS
   // ----------------------------------------------------------------------
-
-  const activeSecondsLeft = roomTimers[activeAdminRoom] || 0;
-  const activeDraws = roomData[activeAdminRoom]?.history || [];
-  
-  let lastPeriod = roomData[activeAdminRoom]?.lastPeriod || "20260522100012000";
-  let activeCurrentPeriod = "";
-  try {
-     if (lastPeriod.length === 17) {
-       const bp = lastPeriod.substring(0, 13);
-       const seq = lastPeriod.substring(13);
-       activeCurrentPeriod = bp + String(parseInt(seq) + 1).padStart(4, '0');
-     } else {
-       activeCurrentPeriod = (BigInt(lastPeriod) + 1n).toString();
-     }
-  } catch(e) {
-     activeCurrentPeriod = String(parseInt(lastPeriod) + 1);
-  }
 
   const handleConfirmNextResult = async () => {
     if (socketRef.current) {
@@ -489,6 +595,91 @@ export default function MobileAdminPanelView({ onLogout, onToggleView }: MobileA
   // ----------------------------------------------------------------------
   // SCENES
   // ----------------------------------------------------------------------
+
+  const renderPredictionGenerator = () => {
+    return (
+      <div className="flex flex-col gap-4 fade-in w-full min-w-0">
+        <div className="bg-white rounded-xl shadow p-6 text-slate-800 w-full min-w-0 overflow-hidden border border-slate-100">
+          <div className="text-center mb-6">
+            <h1 className="text-xl font-bold tracking-tight mb-1 text-[#dfa510]">Prediction Generator</h1>
+            <p className="text-slate-400 text-xs">Create prediction messages instantly</p>
+          </div>
+
+          <div className="space-y-5">
+            <div>
+              <label className="block text-xs font-bold text-slate-500 mb-1.5 ml-1 uppercase">Period Number</label>
+              <input
+                type="text"
+                value={predPeriod}
+                onChange={(e) => setPredPeriod(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#dfa510]/50"
+                placeholder="e.g. 302"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-500 mb-1.5 ml-1 uppercase">Bet On</label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => setPredBetOn('BIG')}
+                  className={`py-3 rounded-xl font-bold transition-all ${predBetOn === 'BIG' ? 'bg-[#dfa510] text-white shadow-md' : 'bg-slate-100 text-slate-600'}`}
+                >
+                  BIG
+                </button>
+                <button
+                  onClick={() => setPredBetOn('SMALL')}
+                  className={`py-3 rounded-xl font-bold transition-all ${predBetOn === 'SMALL' ? 'bg-[#dfa510] text-white shadow-md' : 'bg-slate-100 text-slate-600'}`}
+                >
+                  SMALL
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-500 mb-1.5 ml-1 uppercase">Jackpot Number</label>
+              <input
+                type="text"
+                value={predJackpot}
+                onChange={(e) => setPredJackpot(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#dfa510]/50"
+                placeholder="e.g. 7"
+              />
+            </div>
+          </div>
+
+          <div className="mt-6 relative">
+            <div className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-5 text-[13px] whitespace-pre-wrap font-mono text-slate-700 min-h-[160px] leading-relaxed">
+              {generatePredictionMessage()}
+            </div>
+          </div>
+
+          <div className="flex gap-3 mt-6">
+            <button
+              onClick={handleCopyPrediction}
+              className="flex-1 bg-slate-900 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform"
+            >
+              {predCopied ? <CheckIcon size={20} /> : <Copy size={20} />}
+              {predCopied ? 'Copied!' : 'Copy Message'}
+            </button>
+            <button
+              onClick={handleSharePrediction}
+              className="bg-[#25D366] text-white p-4 rounded-2xl active:scale-95 transition-transform shadow-lg shadow-green-200"
+            >
+              <Send size={24} />
+            </button>
+          </div>
+          
+          <button 
+            onClick={() => setPredPeriod((prev) => (isNaN(parseInt(prev)) ? "1" : (parseInt(prev) + 1).toString()))}
+            className="w-full mt-4 text-slate-400 text-[10px] font-bold uppercase flex items-center justify-center gap-1.5 hover:text-[#dfa510] transition-colors"
+          >
+            <RefreshCw size={12} />
+            Next Period
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   const renderWingoManager = () => {
     // Determine Mins/Secs representation
@@ -984,6 +1175,7 @@ export default function MobileAdminPanelView({ onLogout, onToggleView }: MobileA
               </div>
               <div className="flex-1 overflow-y-auto py-2 pb-20">
                 <MenuItem icon={<LayoutDashboard size={18}/>} label="Dashboard" view="dashboard" active={currentView==='dashboard'} />
+                <MenuItem icon={<Send size={18}/>} label="Prediction Generator" view="prediction" active={currentView==='prediction'} />
                 
                 <div 
                   className={`flex items-center justify-between px-4 py-3 mt-2 cursor-pointer transition-colors ${isWingoMenuOpen ? 'bg-amber-100/30 border-l-4 border-transparent' : 'hover:bg-slate-50 border-l-4 border-transparent'}`}
@@ -1053,6 +1245,7 @@ export default function MobileAdminPanelView({ onLogout, onToggleView }: MobileA
         <main className="flex-1 overflow-y-auto w-full p-4 pb-12">
           {currentView === 'dashboard' && renderDashboard()}
           {currentView === 'wingo' && renderWingoManager()}
+          {currentView === 'prediction' && renderPredictionGenerator()}
           {currentView === 'upi' && renderUpiManager()}
           {currentView === 'finance' && renderFinance(subView as any)}
           {currentView === 'gift' && renderGiftCode()}

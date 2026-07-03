@@ -244,16 +244,43 @@ async function startServer() {
       }
       broadcastResult(room, record);
   };
-// ... existing code
+
+  function generateFallbackResult(room: Room): WingoHistoryRecord {
+    const currentLast = roomData[room].lastPeriod;
+    let nextPeriodStr = currentLast;
+    try {
+      const basePart = currentLast.substring(0, 13);
+      const seqPart = currentLast.substring(13);
+      const nextSeq = String(parseInt(seqPart) + 1).padStart(4, '0');
+      nextPeriodStr = basePart + nextSeq;
+    } catch (e) {
+      nextPeriodStr = String(parseInt(currentLast || "20260522100012001") + 1);
+    }
+
+    // Check if there is a manual result set
+    let number: number;
+    if (roomData[room].nextManualResult !== undefined) {
+      number = roomData[room].nextManualResult!;
+      delete roomData[room].nextManualResult;
+      // Broadcast update to admins
+      io.emit('prediction_updated', { room, nextManualResult: undefined });
+    } else {
+      number = Math.floor(Math.random() * 10);
+    }
+
+    const color = getColor(number);
+    const size = number >= 5 ? 'Big' : 'Small';
+
+    return { period: nextPeriodStr, number, color, size };
+  }
 
   const fetchRoomData = async (room: Room, fetchAll: boolean = false) => {
     try {
-      const urlBase = urlMap[room].split('?')[0]; // Remove existing pageSize query params
+      const urlBase = urlMap[room].split('?')[0]; 
       
       let allRecords: any[] = [];
       
       if (fetchAll) {
-          console.log(`[${room}] Fetching full 50 pages (500 records) from API concurrently...`);
           const fetchPage = async (page) => {
              const res = await fetch(`${urlBase}?pageNo=${page}&pageSize=10`, { signal: AbortSignal.timeout(10000) });
              if (!res.ok) return [];
@@ -262,14 +289,13 @@ async function startServer() {
           };
           const promises = [];
           for (let page = 1; page <= 50; page++) {
-             promises.push(fetchPage(page).catch(e => { console.log('page err', page); return []; }));
+             promises.push(fetchPage(page).catch(() => []));
           }
           const results = await Promise.all(promises);
           for (const list of results) {
              allRecords = [...allRecords, ...list];
           }
       } else {
-          // Just fetch page 1 for polling
           const res = await fetch(`${urlBase}?pageNo=1&pageSize=10`, { signal: AbortSignal.timeout(10000) });
           if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
           const d = await res.json();
@@ -277,13 +303,6 @@ async function startServer() {
       }
       
       if (allRecords.length > 0) {
-        if (!fetchAll && allRecords[0]) {
-             // For periodic polling we don't spam the console too much
-        } else {
-             console.log(`API Fetch Success [${room}]: Received ${allRecords.length} records. Latest Issue: ${allRecords[0]?.issueNumber}`);
-        }
-
-        // Iterate in reverse to save older records first if they are new to us
         const newRecords: WingoHistoryRecord[] = [];
         const currentActivePeriod = getPeriodForTime(Math.floor(Date.now() / 1000), room);
 
@@ -292,21 +311,11 @@ async function startServer() {
           let num = parseInt(item.number);
           const period = item.issueNumber;
           
-          // Prevent early results: do not process results for periods that are still active or in the future
-          if (period >= currentActivePeriod) {
-             continue;
-          }
+          if (period >= currentActivePeriod) continue;
           
-          // Check if this period is already in our history
           const existsInHistory = roomData[room].history.some(h => h.period === period);
           const existsInNew = newRecords.some(r => r.period === period);
           if (!existsInHistory && !existsInNew) {
-              // Override with admin's manual prediction if set
-              if (roomData[room].nextManualResult !== undefined) {
-                num = roomData[room].nextManualResult;
-                delete roomData[room].nextManualResult;
-              }
-
               const record: WingoHistoryRecord = {
                 period: period,
                 number: num,
@@ -317,57 +326,31 @@ async function startServer() {
           }
         }
 
-        // Process records
         if (newRecords.length > 0) {
+            // Apply prediction only to the MOST RECENT new record in polling mode
+            if (!fetchAll && roomData[room].nextManualResult !== undefined) {
+               const latestIndex = newRecords.length - 1;
+               newRecords[latestIndex].number = roomData[room].nextManualResult;
+               newRecords[latestIndex].color = getColor(newRecords[latestIndex].number);
+               newRecords[latestIndex].size = newRecords[latestIndex].number >= 5 ? 'Big' : 'Small';
+               
+               delete roomData[room].nextManualResult;
+               io.emit('prediction_updated', { room, nextManualResult: undefined });
+            }
+
             if (newRecords.length === 1) {
-                // Single update logic (normal polling)
                 saveResult(room, newRecords[0]);
             } else {
-                // Bulk update logic (initial load of 500 records)
-                console.log(`[${room}] Bulk adding ${newRecords.length} records...`);
-                
-                const latestNew = [...newRecords].reverse(); // newest first
-                const combined = [...latestNew, ...roomData[room].history];
-                
-                // Deduplicate based on period
-                const uniqueMap = new Map();
-                for (const item of combined) {
-                    if (!uniqueMap.has(item.period)) {
-                        uniqueMap.set(item.period, item);
-                    }
+                console.log(`[${room}] Adding ${newRecords.length} records...`);
+                // Use a loop to ensure each one is saved and broadcasted
+                for (let i = 0; i < newRecords.length; i++) {
+                    await saveResult(room, newRecords[i]);
                 }
-                
-                roomData[room].history = Array.from(uniqueMap.values())
-                    .sort((a, b) => b.period.localeCompare(a.period))
-                    .slice(0, 500);
-// ... existing code
-                roomData[room].lastPeriod = roomData[room].history[0].period;
-
-                const now = Date.now();
-                if (db && !isWriting[room] && (now - lastSavedTime[room] > 3600000)) {
-                     isWriting[room] = true;
-                     lastSavedTime[room] = now;
-                     setDoc(doc(db, 'globalResults', room), {
-                         history: roomData[room].history,
-                         lastUpdated: serverTimestamp()
-                     }).then(() => {
-                         isWriting[room] = false;
-                     }).catch(e => {
-                         isWriting[room] = false;
-                         console.error(`Bulk write failed for ${room}:`, e);
-                     });
-                }
-
-                // In bulk mode, we might just broadcast the most recent record or none
-// ... existing code
-                broadcastResult(room, latestNew[0]);
             }
         }
       }
     } catch (e: any) {
-      if (fetchAll) {
-          console.error(`Failed full fetch ${room}: ${e.message}`);
-      }
+      if (fetchAll) console.error(`Failed full fetch ${room}: ${e.message}`);
     }
   };
 
@@ -382,7 +365,7 @@ async function startServer() {
     };
 
     Object.keys(newTimers).forEach(r => {
-      const room = r;
+      const room = r as Room;
       const time = newTimers[room];
       
       io.emit('timer_sync', { room, time });
