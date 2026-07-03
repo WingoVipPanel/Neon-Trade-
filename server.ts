@@ -78,6 +78,34 @@ const roomData: Record<Room, { history: WingoHistoryRecord[], lastPeriod: string
   '5m': { history: [], lastPeriod: "" }
 };
 
+const getPeriodForTime = (time: number, room: Room) => {
+    const pDate = new Date(time * 1000);
+    const minOfDay = pDate.getUTCHours() * 60 + pDate.getUTCMinutes();
+    const seconds = pDate.getUTCSeconds();
+    let seq = 1;
+    let roomCode = '1';
+    
+    if (room === '30s') {
+      seq = (minOfDay * 2) + (seconds < 30 ? 1 : 2);
+      roomCode = '5';
+    } else if (room === '1m') {
+      seq = minOfDay + 1;
+      roomCode = '1';
+    } else if (room === '3m') {
+      seq = Math.floor(minOfDay / 3) + 1;
+      roomCode = '2';
+    } else if (room === '5m') {
+      seq = Math.floor(minOfDay / 5) + 1;
+      roomCode = '3';
+    }
+    
+    const yyyy = pDate.getUTCFullYear();
+    const mm = String(pDate.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(pDate.getUTCDate()).padStart(2, '0');
+    
+    return `${yyyy}${mm}${dd}1000${roomCode}${String(seq).padStart(4, '0')}`;
+};
+
 const getColor = (num: number) => {
   if (num === 0) return 'Red+Violet';
   if (num === 5) return 'Green+Violet';
@@ -257,10 +285,17 @@ async function startServer() {
 
         // Iterate in reverse to save older records first if they are new to us
         const newRecords: WingoHistoryRecord[] = [];
+        const currentActivePeriod = getPeriodForTime(Math.floor(Date.now() / 1000), room);
+
         for (let i = allRecords.length - 1; i >= 0; i--) {
           const item = allRecords[i];
           let num = parseInt(item.number);
           const period = item.issueNumber;
+          
+          // Prevent early results: do not process results for periods that are still active or in the future
+          if (period >= currentActivePeriod) {
+             continue;
+          }
           
           // Check if this period is already in our history
           const existsInHistory = roomData[room].history.some(h => h.period === period);
@@ -338,35 +373,32 @@ async function startServer() {
 
   // Internal Loop for generating fallbacks and timers
   setInterval(() => {
-    Object.keys(timers).forEach(r => {
-      const room = r as Room;
-      
-      timers[room] -= 1;
-      
-      // Every sec broadcast timer (we could just let client sync, but exact timer is nice)
-      io.emit('timer_sync', { room, time: timers[room] });
+    const nowTs = Math.floor(Date.now() / 1000);
+    const newTimers = {
+      '30s': 30 - (nowTs % 30),
+      '1m': 60 - (nowTs % 60),
+      '3m': 180 - (nowTs % 180),
+      '5m': 300 - (nowTs % 300),
+    };
 
-      if (timers[room] <= 0) {
-        // Time to produce a result!
-        // Try fetching first, we give it 2 seconds max
+    Object.keys(newTimers).forEach(r => {
+      const room = r;
+      const time = newTimers[room];
+      
+      io.emit('timer_sync', { room, time });
+
+      const maxTime = room === '30s' ? 30 : room === '1m' ? 60 : room === '3m' ? 180 : 300;
+      if (time === maxTime) {
         const prevPeriod = roomData[room].lastPeriod;
         setTimeout(async () => {
-             // Let see if fetch worked (it polls constantly anyway)
              if (roomData[room].lastPeriod === prevPeriod) {
                  console.log(`Fallback triggered for ${room}`);
                  const fallbackResult = generateFallbackResult(room);
                  await saveResult(room, fallbackResult);
              }
-        }, 1500); // give it a chance to be updated by the network poller
-
-        // Reset timer
-        if (room === '30s') timers[room] = 30;
-        if (room === '1m') timers[room] = 60;
-        if (room === '3m') timers[room] = 180;
-        if (room === '5m') timers[room] = 300;
+        }, 3000); 
       }
     });
-
   }, 1000);
 
   // Polling from network

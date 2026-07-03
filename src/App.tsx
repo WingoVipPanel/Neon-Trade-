@@ -1652,16 +1652,29 @@ export default function App() {
   const getPeriodForTime = (time, room) => {
     const pDate = new Date(time * 1000);
     const minOfDay = pDate.getUTCHours() * 60 + pDate.getUTCMinutes();
-    let seq = (minOfDay * 2) + Math.floor(pDate.getUTCSeconds() / 30);
-    if (room === '1m') seq = minOfDay;
-    else if (room === '3m') seq = Math.floor(minOfDay / 3);
-    else if (room === '5m') seq = Math.floor(minOfDay / 5);
+    const seconds = pDate.getUTCSeconds();
+    let seq = 1;
+    let roomCode = '1';
+    
+    if (room === '30s') {
+      seq = (minOfDay * 2) + (seconds < 30 ? 1 : 2);
+      roomCode = '5';
+    } else if (room === '1m') {
+      seq = minOfDay + 1;
+      roomCode = '1';
+    } else if (room === '3m') {
+      seq = Math.floor(minOfDay / 3) + 1;
+      roomCode = '2';
+    } else if (room === '5m') {
+      seq = Math.floor(minOfDay / 5) + 1;
+      roomCode = '3';
+    }
     
     const yyyy = pDate.getUTCFullYear();
     const mm = String(pDate.getUTCMonth() + 1).padStart(2, '0');
     const dd = String(pDate.getUTCDate()).padStart(2, '0');
     
-    return `${yyyy}${mm}${dd}10001${String(seq).padStart(4, '0')}`;
+    return `${yyyy}${mm}${dd}1000${roomCode}${String(seq).padStart(4, '0')}`;
   };
 
   const generateDeterministicResult = (room, periodStr) => {
@@ -2400,28 +2413,7 @@ export default function App() {
     setWingoWinningsAlert(null);
 
     const targetRoom = activeWingoRoom || '30s';
-    const roomHist = wingoHistory[targetRoom] || [];
-    const lastPeriodObj = roomHist.find(h => h.number !== -1) || roomHist[0];
-    const lastPeriod = lastPeriodObj?.period;
-    
-    let nextPeriod = '';
-    if (lastPeriod) {
-      const cleaned = lastPeriod.replace(/\D/g, '');
-      if (cleaned.length === 17) {
-        try {
-          const basePart = cleaned.substring(0, 13);
-          const seqPart = cleaned.substring(13);
-          const nextSeq = String(parseInt(seqPart) + 1).padStart(4, '0');
-          nextPeriod = basePart + nextSeq;
-        } catch (e) {
-          nextPeriod = (BigInt(cleaned) + 1n).toString();
-        }
-      } else {
-        nextPeriod = (BigInt(cleaned) + 1n).toString();
-      }
-    } else {
-      nextPeriod = '20260521100012001';
-    }
+    let nextPeriod = getPeriodForTime(Math.floor(Date.now() / 1000), targetRoom);
     
     const now = new Date();
     const isoTimestamp = now.toISOString();
@@ -4660,23 +4652,7 @@ export default function App() {
                           return `${yyyy}${mm}${dd}100010001`;
                       };
 
-                      if (lastPeriodObj && lastPeriodObj.period) {
-                        try {
-                          const lastPeriod = String(lastPeriodObj.period).replace(/\D/g, '');
-                          if (lastPeriod.length === 17) {
-                            const basePart = lastPeriod.substring(0, 13);
-                            const seqPart = lastPeriod.substring(13);
-                            const nextSeq = (parseInt(seqPart) + 1).toString().padStart(4, '0');
-                            periodCode = basePart + nextSeq;
-                          } else {
-                            periodCode = (BigInt(lastPeriod) + 1n).toString();
-                          }
-                        } catch (e) {
-                          periodCode = generateTodayBase();
-                        }
-                      } else {
-                        periodCode = generateTodayBase();
-                      }
+                      periodCode = getPeriodForTime(Math.floor(Date.now() / 1000), activeWingoRoom || '30s');
                       return (
                         <div className="px-4 py-1.5 select-none">
                           <div 
