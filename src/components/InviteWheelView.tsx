@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import InvitePosterView from "./InvitePosterView";
+import { db } from '../lib/firebase';
+import { doc, getDoc, setDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 import {
   HelpCircle,
   FileText,
@@ -29,14 +32,15 @@ interface InviteWheelViewProps {
   usedSpins: number;
   onSpinUsed: () => void;
   uid: string;
+  firebaseUid: string;
 }
 
 const PRIZES = [
   { id: 1, label: "₹0-10", value: 5, prob: 30 },
   { id: 2, label: "₹27", value: 27, prob: 25 },
   { id: 3, label: "₹57", value: 57, prob: 20 },
-  { id: 4, label: "₹500", value: 500, prob: 2 },
-  { id: 5, label: "₹377", value: 377, prob: 3 },
+  { id: 4, label: "₹200", value: 200, prob: 2 },
+  { id: 5, label: "₹7", value: 7, prob: 3 },
   { id: 6, label: "₹77", value: 77, prob: 10 },
   { id: 7, label: "₹87", value: 87, prob: 7 },
   { id: 8, label: "₹177", value: 177, prob: 3 },
@@ -55,12 +59,15 @@ export default function InviteWheelView({
   usedSpins,
   onSpinUsed,
   uid,
+  firebaseUid,
 }: InviteWheelViewProps) {
-  const spinsLeft = Math.max(0, inviteeDepositCount - usedSpins);
+  const [localUsedSpins, setLocalUsedSpins] = useState(usedSpins);
+  const spinsLeft = Math.max(0, 1 + inviteeDepositCount - localUsedSpins);
   const [isSpinning, setIsSpinning] = useState(false);
   const [rotation, setRotation] = useState(0);
   const [totalSpins, setTotalSpins] = useState(0);
   const [showPopup, setShowPopup] = useState(false);
+  const [showInvitePosters, setShowInvitePosters] = useState(false);
   const [showInsufficientModal, setShowInsufficientModal] = useState(false);
   const [insufficientType, setInsufficientType] = useState<"spin" | "cashout">(
     "cashout",
@@ -72,11 +79,105 @@ export default function InviteWheelView({
     { id: number; user: string; amount: number; time: string; isYou: boolean }[]
   >([]);
 
-  const unlockTarget = 500;
+  const [spinTimerExpiresAt, setSpinTimerExpiresAt] = useState<number | null>(null);
+  const [countdownStr, setCountdownStr] = useState('72:00:00');
+
+  useEffect(() => {
+    if (!firebaseUid || firebaseUid === '000000') {
+      // For guest/demo users, mock the timer locally
+      let expiresAt = Number(localStorage.getItem('mockSpinTimerExpiresAt'));
+      if (!expiresAt || isNaN(expiresAt) || Date.now() > expiresAt) {
+        expiresAt = Date.now() + 72 * 60 * 60 * 1000;
+        localStorage.setItem('mockSpinTimerExpiresAt', expiresAt.toString());
+      }
+      setSpinTimerExpiresAt(expiresAt);
+      return;
+    }
+
+    const unsub = onSnapshot(doc(db, 'users', firebaseUid), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        let currentWallet = Number(data.spinWallet) || 0;
+        let expiresAt = Number(data.spinTimerExpiresAt) || 0;
+        const now = Date.now();
+        setLocalUsedSpins(data.usedSpins || 0);
+
+        // Check if timer expired or is missing/invalid
+        if (!expiresAt || isNaN(expiresAt) || now > expiresAt) {
+          expiresAt = now + 72 * 60 * 60 * 1000;
+          currentWallet = 0; // reset
+          setDoc(doc(db, 'users', firebaseUid), {
+            spinWallet: currentWallet,
+            spinTimerExpiresAt: expiresAt,
+            usedSpins: Math.max(data.usedSpins || 0, inviteeDepositCount || 0)
+          }, { merge: true }).catch(console.error);
+        }
+        
+        setRewardWallet(currentWallet);
+        setSpinTimerExpiresAt(expiresAt);
+      } else {
+        // If doc doesn't exist but firebaseUid is valid, create a fallback timer
+        setSpinTimerExpiresAt(Date.now() + 72 * 60 * 60 * 1000);
+      }
+    });
+    return () => unsub();
+  }, [firebaseUid, inviteeDepositCount]);
+
+  // Countdown timer effect
+  useEffect(() => {
+    if (!spinTimerExpiresAt) return;
+    
+    let isResetting = false;
+
+    const updateCountdown = () => {
+      const now = Date.now();
+      const diff = spinTimerExpiresAt - now;
+      if (diff <= 0) {
+        setCountdownStr('00:00:00');
+        // If timer expires while user is watching, force a DB update to reset it
+        if (firebaseUid && firebaseUid !== '000000' && !isResetting) {
+           isResetting = true;
+           setDoc(doc(db, 'users', firebaseUid), {
+             spinWallet: 0,
+             spinTimerExpiresAt: Date.now() + 72 * 60 * 60 * 1000,
+             usedSpins: Math.max(localUsedSpins, inviteeDepositCount || 0)
+           }, { merge: true }).finally(() => {
+             isResetting = false;
+           });
+        } else if (firebaseUid === '000000' && !isResetting) {
+           const next = Date.now() + 72 * 60 * 60 * 1000;
+           localStorage.setItem('mockSpinTimerExpiresAt', next.toString());
+           setSpinTimerExpiresAt(next);
+        }
+        return;
+      }
+      const h = Math.floor(diff / (1000 * 60 * 60));
+      const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const s = Math.floor((diff % (1000 * 60)) / 1000);
+      setCountdownStr(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`);
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+    return () => clearInterval(interval);
+  }, [spinTimerExpiresAt, firebaseUid, inviteeDepositCount]);
+
+  const unlockTarget = 200;
 
   const handleCashOut = () => {
     if (rewardWallet >= unlockTarget) {
-      setBalance((prev) => prev + rewardWallet);
+      setBalance((prev) => {
+        const newBalance = prev + rewardWallet;
+        if (firebaseUid) {
+           setDoc(doc(db, 'users', firebaseUid), { 
+             balance: newBalance,
+             spinWallet: 0,
+             spinTimerExpiresAt: Date.now() + 72 * 60 * 60 * 1000,
+             usedSpins: Math.max(localUsedSpins, inviteeDepositCount || 0)
+           }, { merge: true });
+        }
+        return newBalance;
+      });
       setRewardWallet(0);
       setLobbyToast({
         type: "success",
@@ -163,10 +264,17 @@ export default function InviteWheelView({
     if (navigator.vibrate) navigator.vibrate(50);
 
     setIsSpinning(true);
+    
+    // Update usedSpins locally and in DB
+    const newUsed = localUsedSpins + 1;
+    setLocalUsedSpins(newUsed);
+    if (firebaseUid) {
+       setDoc(doc(db, 'users', firebaseUid), { usedSpins: newUsed }, { merge: true });
+    }
     onSpinUsed();
 
     // Determine Result
-    const isFirstSpin = totalSpins === 0;
+    const isFirstSpin = localUsedSpins === 0;
     const targetPrizeIndex = getPrizeIndex(isFirstSpin);
 
     // Calculate rotation with easing duration 0.1 seconds
@@ -225,7 +333,13 @@ export default function InviteWheelView({
       }, 250);
 
       // Add reward to the wheel's wallet
-      setRewardWallet((prev) => prev + prize.value);
+      setRewardWallet((prev) => {
+        const updated = prev + prize.value;
+        if (firebaseUid) {
+           setDoc(doc(db, 'users', firebaseUid), { spinWallet: updated }, { merge: true });
+        }
+        return updated;
+      });
 
       // Get formatted date/time like 2026-05-24 15:46:27
       const now = new Date();
@@ -249,23 +363,26 @@ export default function InviteWheelView({
   };
 
   const handleInvite = () => {
-    // Just copy link, don't give fake spins
-    navigator.clipboard.writeText(`https://neon-trade.vercel.app?ref=${uid}`);
-    setLobbyToast({
-      type: "success",
-      text:
-        selectedLang === "en"
-          ? "Referral link copied!"
-          : "रेफरल लिंक कॉपी किया गया!",
-    });
+    setShowInvitePosters(true);
   };
 
   return (
-    <motion.div
+    <motion.div className="w-full flex flex-col relative h-full">
+      <AnimatePresence>
+        {showInvitePosters && (
+          <InvitePosterView 
+            key="invite-poster-view"
+            uid={uid} 
+            selectedLang={selectedLang} 
+            onBack={() => setShowInvitePosters(false)} 
+          />
+        )}
+      </AnimatePresence>
+    <motion.div className="w-full flex flex-col font-sans relative bg-[#120102] text-white flex-1 overflow-y-auto"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="w-full flex flex-col font-sans relative bg-[#120102] text-white"
+      
     >
       {/* Premium CSS Keyframe Styles for shiny gleam effect and LED chase lights */}
       <style>{`
@@ -380,7 +497,7 @@ export default function InviteWheelView({
         {/* VIP Golden Wallet/Balance Card */}
         <div className="w-full flex flex-col items-center relative z-20 mb-4 mt-2">
           <div className="text-white/50 font-normal tracking-wide text-[11px] mb-0.5 font-sans select-none uppercase">
-            {selectedLang === "en" ? "my amount(187:11:21)" : "मेरी राशि(187:11:21)"}
+            {selectedLang === "en" ? `my amount(${countdownStr})` : `मेरी राशि(${countdownStr})`}
           </div>
 
           <div className="flex items-center gap-0.5 mb-2.5">
@@ -569,8 +686,8 @@ export default function InviteWheelView({
           className="text-white/40 font-medium text-[12px] mt-2 mb-4 text-center z-20 tracking-wide"
         >
           {selectedLang === "en"
-            ? `Only ₹${Math.max(0, 500 - rewardWallet).toFixed(2)} left to get prize ₹500.00`
-            : `पुरस्कार ₹500.00 प्राप्त करने के लिए केवल ₹${Math.max(0, 500 - rewardWallet).toFixed(2)} शेष हैं`}
+            ? `Only ₹${Math.max(0, 200 - rewardWallet).toFixed(2)} left to get prize ₹200.00`
+            : `पुरस्कार ₹200.00 प्राप्त करने के लिए केवल ₹${Math.max(0, 200 - rewardWallet).toFixed(2)} शेष हैं`}
         </p>
 
         {/* User Record History List Container - Clean professional layout */}
@@ -710,6 +827,7 @@ export default function InviteWheelView({
           </motion.div>
         )}
       </AnimatePresence>
+        </motion.div>
     </motion.div>
   );
 }

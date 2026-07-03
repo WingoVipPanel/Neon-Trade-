@@ -60,7 +60,8 @@ import {
   limit,
   orderBy,
   onSnapshot,
-  runTransaction
+  runTransaction,
+  deleteDoc
 } from 'firebase/firestore';
 import { 
   db, 
@@ -658,7 +659,7 @@ export default function App() {
     { id: 'win-1', name: 'Mem***TAJ', amount: 48.22, game: 'Wingo 1M', gameImg: 'https://i.ibb.co/2QQr71m/file-000000008c6071faa26fa7f582b22667.png' },
     { id: 'win-2', name: 'Mem***BUC', amount: 241.14, game: 'Wingo 30s', gameImg: 'https://i.ibb.co/twP5vVhH/file-0000000052447207a3365bdca980061e.png' },
     { id: 'win-3', name: 'Mem***XJL', amount: 154.08, game: 'Wingo 3M', gameImg: 'https://i.ibb.co/9HMwVbML/file-00000000d9a07206a1f56f9c5ed5a935.png' },
-    { id: 'win-4', name: 'Mem***YHK', amount: 382.40, game: 'Millennium 5', gameImg: 'https://i.ibb.co/WNQZyCdw/file-0000000073407209b9bf684dc8b4aeb5.png' },
+    { id: 'win-4', name: 'Mem***YHK', amount: 382.40, game: 'Wingo 5Min', gameImg: 'https://i.ibb.co/WNQZyCdw/file-0000000073407209b9bf684dc8b4aeb5.png' },
     { id: 'win-5', name: 'Mem***KND', amount: 81.63, game: 'Wingo 1M', gameImg: 'https://i.ibb.co/2QQr71m/file-000000008c6071faa26fa7f582b22667.png' }
   ]);
 
@@ -668,7 +669,7 @@ export default function App() {
       { game: 'Wingo 30s', img: 'https://i.ibb.co/twP5vVhH/file-0000000052447207a3365bdca980061e.png' },
       { game: 'Wingo 1M', img: 'https://i.ibb.co/2QQr71m/file-000000008c6071faa26fa7f582b22667.png' },
       { game: 'Wingo 3M', img: 'https://i.ibb.co/9HMwVbML/file-00000000d9a07206a1f56f9c5ed5a935.png' },
-      { game: 'Millennium 5', img: 'https://i.ibb.co/WNQZyCdw/file-0000000073407209b9bf684dc8b4aeb5.png' }
+      { game: 'Wingo 5Min', img: 'https://i.ibb.co/WNQZyCdw/file-0000000073407209b9bf684dc8b4aeb5.png' }
     ];
     
     const interval = setInterval(() => {
@@ -1799,8 +1800,27 @@ export default function App() {
       );
       const querySnapshot = await getDocs(q);
       const fetchedBets: any[] = [];
-      querySnapshot.forEach((doc) => {
-        fetchedBets.push(doc.data());
+      const nowMs = Date.now();
+      const seventyTwoHoursMs = 72 * 60 * 60 * 1000;
+
+      querySnapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        let shouldDelete = false;
+
+        // Check if older than 72 hours
+        if (data.timestamp) {
+          const betTimeMs = new Date(data.timestamp).getTime();
+          if (nowMs - betTimeMs > seventyTwoHoursMs) shouldDelete = true;
+        } else if (data.timestampDisplay) {
+          const betTimeMs = new Date(data.timestampDisplay.replace(' ', 'T')).getTime(); // rough fallback
+          if (!isNaN(betTimeMs) && nowMs - betTimeMs > seventyTwoHoursMs) shouldDelete = true;
+        }
+
+        if (shouldDelete) {
+          deleteDoc(docSnap.ref).catch(() => {});
+        } else {
+          fetchedBets.push(data);
+        }
       });
 
       // Populate localBetsRef.current so live listeners don't duplicate or miss them
@@ -2021,7 +2041,7 @@ export default function App() {
        if (active) setSocketConnected(false);
     });
     socket.on('connect_error', (err) => {
-       if (err.message !== 'xhr poll error' && err.message !== 'websocket error') {
+       if (err.message !== 'xhr poll error' && err.message !== 'websocket error' && err.message !== 'timeout' && err.message !== 'server error') {
          console.error('Socket connection error detail:', err.message);
        }
        if (active) setSocketConnected(false);
@@ -3097,111 +3117,19 @@ export default function App() {
                   })}
                 </div>
 
-                {/* Sub Tabs: winning results vs my bets */}
-                <div className="flex bg-black/10 border-b border-white/5 p-1 shrink-0 gap-1">
-                  <button
-                    onClick={() => setGameHistorySubTab('results')}
-                    className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-wider text-center transition rounded-md ${
-                      gameHistorySubTab === 'results'
-                        ? 'bg-white/10 text-white border border-white/10'
-                        : 'text-white/40 hover:text-white/80'
-                    }`}
-                  >
-                    {selectedLang === 'en' ? 'Winning Draws' : 'विजेता ड्रॉ'}
-                  </button>
-                  <button
-                    onClick={() => setGameHistorySubTab('bets')}
-                    className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-wider text-center transition rounded-md ${
-                      gameHistorySubTab === 'bets'
-                        ? 'bg-white/10 text-white border border-white/10'
-                        : 'text-white/40 hover:text-white/80'
-                    }`}
-                  >
-                    {selectedLang === 'en' ? 'My Betting History' : 'मेरा सट्टा इतिहास'}
-                  </button>
-                </div>
-
                 {/* Records List */}
                 <div className="flex-1 overflow-y-auto px-4 py-5 space-y-3.5 scrollbar-hide">
                   <div className="rounded-xl bg-[#5c1c1e] p-4 text-center border border-white/5">
                     <h4 className="text-[#ffbc0d] font-black text-[14px] uppercase tracking-wide mb-1">
-                      {gameHistorySubTab === 'results' 
-                        ? (selectedLang === 'en' ? 'Wingo Lottery Draws' : 'विंगो लॉटरी ड्रा') 
-                        : (selectedLang === 'en' ? 'My Custom Placed Bets' : 'मेरे द्वारा लगाए गए दांव')}
+                      {selectedLang === 'en' ? 'My Custom Placed Bets' : 'मेरे द्वारा लगाए गए दांव'}
                     </h4>
                     <p className="text-white/50 text-[11px]">
-                      {gameHistorySubTab === 'results'
-                        ? (selectedLang === 'en' ? 'All historical drawing numbers synced' : 'सिंक किए गए सभी ऐतिहासिक ड्राइंग नंबर')
-                        : (selectedLang === 'en' ? 'Real-time records matching live rooms' : 'लाइव कमरों से मेल खाने वाले वास्तविक समय रिकॉर्ड')}
+                      {selectedLang === 'en' ? 'Real-time records matching live rooms' : 'लाइव कमरों से मेल खाने वाले वास्तविक समय रिकॉर्ड'}
                     </p>
                   </div>
 
                   {/* Pull and render records */}
                   {(() => {
-                    const roomRecords = wingoHistory[gameHistoryOverlayRoom] || [];
-
-                    if (gameHistorySubTab === 'results') {
-                      const completedDraws = roomRecords.filter(h => h.number !== -1);
-                      if (completedDraws.length === 0) {
-                        return (
-                          <div className="py-12 text-center opacity-65 flex flex-col items-center">
-                            <div className="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center mb-3">
-                              <Trophy className="h-6 w-6 text-[#ffbc0d]/70" />
-                            </div>
-                            <span className="text-sm font-bold text-white uppercase tracking-wider block">
-                              {selectedLang === 'en' ? 'No Draw Data Yet' : 'कोई डेटा उपलब्ध नहीं है'}
-                            </span>
-                            <span className="text-xs text-white/40 mt-1 max-w-[200px] block font-medium">
-                              {selectedLang === 'en' ? 'Generating next block sequence shortly ...' : 'अगला ब्लॉक अनुक्रम जल्द ही उत्पन्न हो रहा है ...'}
-                            </span>
-                          </div>
-                        );
-                      }
-
-                      return completedDraws.map((draw: any, idx: number) => {
-                        // Color formatting
-                        const c = draw.color;
-                        let colDot = "bg-rose-500";
-                        if (c.includes('Green') && c.includes('Violet')) colDot = "bg-gradient-to-r from-emerald-500 to-purple-500";
-                        else if (c.includes('Red') && c.includes('Violet')) colDot = "bg-gradient-to-r from-rose-500 to-purple-500";
-                        else if (c === 'Green') colDot = "bg-emerald-500";
-                        else if (c === 'Violet') colDot = "bg-purple-500";
-                        
-                        // Format period
-                        const displayPeriod = draw.period.length > 5 ? draw.period.slice(-5) : draw.period;
-
-                        return (
-                          <div key={idx} className="bg-[#5c1c1e] border border-white/5 rounded-xl p-4 flex items-center justify-between shadow-md">
-                            <div className="text-left">
-                              <span className="text-white/40 text-[10px] uppercase font-bold tracking-wider font-sans block mb-1">Period No.</span>
-                              <span className="text-[#ffbc0d] font-black text-sm font-mono tracking-wide">{displayPeriod}</span>
-                            </div>
-                            
-                            {/* Drawn details */}
-                            <div className="flex items-center gap-3">
-                              {/* Drawn Number with corresponding color background */}
-                              <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-sm text-white shadow-md border border-white/20 overflow-hidden ${colDot}`}>
-                                {draw.number}
-                              </div>
-                              
-                              {/* Labels */}
-                              <div className="flex flex-col text-left gap-0.5">
-                                <div className="flex items-center gap-1.5">
-                                  <span className="text-white/50 text-[10px] font-bold">SIZE:</span>
-                                  <span className={`text-[11px] font-black uppercase ${draw.size === 'Big' ? 'text-amber-400' : 'text-sky-400'}`}>
-                                    {draw.size}
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                  <span className="text-white/50 text-[10px] font-bold">COLOR:</span>
-                                  <span className="text-[11px] font-black text-white/95 uppercase">{draw.color}</span>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      });
-                    } else {
                       // Personal Placed Bets tab
                       const myBets = myWingoBets[gameHistoryOverlayRoom] || [];
                       if (myBets.length === 0) {
@@ -3219,49 +3147,154 @@ export default function App() {
                           </div>
                         );
                       }
-
                       return myBets.map((bet: any, idx: number) => {
                         const isWin = bet.winLoss === 'Win';
-                        const displayPeriod = bet.period.length > 5 ? bet.period.slice(-5) : bet.period;
+                        const displayPeriod = bet.period;
+                        const orderNum = `WG${bet.period}${Math.abs(`${bet.period}_${bet.userChoice}_${bet.timestamp}`.split("").reduce((a,b)=>{a=((a<<5)-a)+b.charCodeAt(0);return a&a},0)).toString().padStart(10, '3')}`;
+
+                        let payoutMultiplier = 1.96;
+                        if (typeof bet.userChoice === 'number') payoutMultiplier = 8.82;
+                        else if (bet.userChoice === 'Violet') payoutMultiplier = 4.41;
+                        else if (bet.userChoice === 'Green' && bet.color === 'Green+Violet') payoutMultiplier = 1.47;
+                        else if (bet.userChoice === 'Red' && bet.color === 'Red+Violet') payoutMultiplier = 1.47;
+
+                        const winnings = isWin ? bet.betAmount * payoutMultiplier : 0;
+                        const profitLoss = isWin ? winnings - bet.betAmount : -bet.betAmount;
+
                         return (
-                          <div key={idx} className="bg-[#5c1c1e] border border-white/5 rounded-xl p-4 flex flex-col justify-between shadow-lg">
-                            <div className="flex items-center justify-between mb-3 text-white/50 text-[11px] font-mono">
-                              <span>Period: {displayPeriod}</span>
-                              <span>{bet.timestamp || 'Just now'}</span>
+                          <div key={idx} className="mb-4 bg-[#3d0f10] rounded-xl overflow-hidden shadow-lg border border-white/5 font-sans relative w-full">
+                            {/* Header */}
+                            <div className="flex justify-between items-start p-4">
+                              <div className="flex flex-col">
+                                <span className="text-white font-bold text-lg">Win Go</span>
+                                <span className="text-white/40 text-xs mt-0.5">{bet.timestamp || 'Just now'}</span>
+                              </div>
+                              <div className={`text-base font-bold ${!bet.resolved ? 'text-[#ffbc0d]' : isWin ? 'text-[#15be75]' : 'text-[#ffcf24]'}`}>
+                                {!bet.resolved ? 'Pending' : isWin ? 'Win' : 'Lose'}
+                              </div>
                             </div>
-                            <div className="flex items-center justify-between">
-                              <div className="text-left">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-[13px] text-white/90 font-bold uppercase">Choice:</span>
-                                  <span className={`px-2 py-0.5 rounded text-[11px] font-black uppercase tracking-wide ${
-                                    bet.userChoice === 'Green' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
-                                    bet.userChoice === 'Red' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' :
-                                    'bg-yellow-500/10 text-yellow-500 border border-yellow-500/20'
-                                  }`}>
-                                    {bet.userChoice}
-                                  </span>
+
+                            {/* Details List */}
+                            <div className="px-4 pb-2 space-y-2.5 relative">
+                              {/* Type */}
+                              <div className="flex justify-between items-center text-[13px] relative">
+                                <div className="absolute left-[3px] top-[14px] bottom-[-14px] w-[1px] border-l border-dashed border-white/20" />
+                                <div className="flex items-center gap-2 z-10 bg-[#3d0f10]">
+                                  <div className="w-1.5 h-1.5 rounded-full border-2 border-[#ffcf24] shrink-0" />
+                                  <span className="text-white/70">Type</span>
                                 </div>
-                                <div className="text-[11px] text-white/40 mt-1.5 font-bold font-mono">
-                                  STAKE: ₹{bet.betAmount}
+                                <span className="text-white">Win Go {gameHistoryOverlayRoom === '30s' ? '30s' : gameHistoryOverlayRoom === '1m' ? '1Min' : gameHistoryOverlayRoom === '3m' ? '3Min' : '5Min'}</span>
+                              </div>
+                              {/* Period */}
+                              <div className="flex justify-between items-center text-[13px] relative">
+                                <div className="absolute left-[3px] top-[14px] bottom-[-14px] w-[1px] border-l border-dashed border-white/20" />
+                                <div className="flex items-center gap-2 z-10 bg-[#3d0f10]">
+                                  <div className="w-1.5 h-1.5 rounded-full border-2 border-[#ffcf24] shrink-0" />
+                                  <span className="text-white/70">Period</span>
+                                </div>
+                                <span className="text-white font-mono">{displayPeriod}</span>
+                              </div>
+                              {/* Order number */}
+                              <div className="flex justify-between items-center text-[13px] relative">
+                                <div className="absolute left-[3px] top-[14px] bottom-[-14px] w-[1px] border-l border-dashed border-white/20" />
+                                <div className="flex items-center gap-2 z-10 bg-[#3d0f10]">
+                                  <div className="w-1.5 h-1.5 rounded-full border-2 border-[#ffcf24] shrink-0" />
+                                  <span className="text-white/70">Order number</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-white font-mono text-[11px]">{orderNum}</span>
+                                  <Copy className="h-3.5 w-3.5 text-white/50 cursor-pointer active:scale-90" onClick={() => navigator.clipboard.writeText(orderNum)} />
                                 </div>
                               </div>
-                              <div className="text-right flex flex-col items-end">
-                                <span className={`px-3 py-1 rounded-md text-[10px] font-black tracking-widest ${
-                                  !bet.resolved ? 'bg-amber-500/10 text-[#ffbc0d] border border-amber-500/25' :
-                                  isWin ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 animate-pulse' :
-                                  'bg-white/5 text-white/35 border border-white/5'
-                                }`}>
-                                  {!bet.resolved ? 'PENDING' : isWin ? 'SUCCEED' : 'FAILED'}
-                                </span>
-                                <span className={`text-[15px] font-black font-mono mt-1 ${!bet.resolved ? 'text-white/60' : isWin ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                  {!bet.resolved ? '' : isWin ? '+' : '-'}₹{!bet.resolved ? bet.betAmount.toFixed(2) : (isWin ? (bet.betAmount * 1.96).toFixed(2) : bet.betAmount.toFixed(2))}
-                                </span>
+                              {/* Select */}
+                              <div className="flex justify-between items-center text-[13px] relative">
+                                <div className="absolute left-[3px] top-[14px] bottom-[-14px] w-[1px] border-l border-dashed border-white/20" />
+                                <div className="flex items-center gap-2 z-10 bg-[#3d0f10]">
+                                  <div className="w-1.5 h-1.5 rounded-full border-2 border-[#ffcf24] shrink-0" />
+                                  <span className="text-white/70">Select</span>
+                                </div>
+                                <span className="text-white">{bet.userChoice !== undefined ? bet.userChoice : bet.size}</span>
+                              </div>
+                              {/* Total bet */}
+                              <div className="flex justify-between items-center text-[13px] relative">
+                                <div className="flex items-center gap-2 z-10 bg-[#3d0f10]">
+                                  <div className="w-1.5 h-1.5 rounded-full border-2 border-[#ffcf24] shrink-0" />
+                                  <span className="text-white/70">Total bet</span>
+                                </div>
+                                <span className="text-white font-mono">₹{bet.betAmount.toFixed(2)}</span>
+                              </div>
+                            </div>
+
+                            <div className="mx-4 my-3 border-t border-dashed border-white/20" />
+
+                            {/* Lottery Results */}
+                            <div className="px-4 pb-4">
+                              <div className="flex items-center gap-2 mb-3 relative">
+                                <div className="absolute left-[3px] top-[14px] bottom-[-24px] w-[1px] border-l border-dashed border-white/20" />
+                                <div className="w-1.5 h-1.5 rounded-full border-2 border-[#ffcf24] shrink-0 z-10 bg-[#3d0f10]" />
+                                <span className="text-white/70 text-sm">Lottery results</span>
+                              </div>
+                              
+                              {bet.resolved ? (
+                                <div className="flex items-center gap-2.5 pl-3 mb-5 relative">
+                                  <div className="w-1.5 h-1.5 rounded-full border-2 border-[#ffcf24] shrink-0 z-10 bg-[#3d0f10] -ml-[13px]" />
+                                  
+                                  {/* Ball */}
+                                  <div className="w-[30px] h-[30px] flex items-center justify-center shrink-0">
+                                     <img src={LOTTERY_BALLS[bet.number as number]} className="w-full h-full object-contain drop-shadow-md" alt={bet.number?.toString()} />
+                                  </div>
+                                  {/* Size */}
+                                  <div className={`px-2 py-0.5 rounded text-[11px] font-medium text-white ${bet.size === 'Big' ? 'bg-[#faa449]' : 'bg-[#508cf3]'}`}>
+                                    {bet.size}
+                                  </div>
+                                  {/* Color */}
+                                  <div 
+                                    className="px-2 py-0.5 rounded text-[11px] font-medium text-white"
+                                    style={{
+                                      background: bet.color === 'Green' ? '#15be75' : 
+                                                  bet.color === 'Red' ? '#ff4148' : 
+                                                  bet.color === 'Violet' ? '#c742e4' : 
+                                                  bet.color === 'Green+Violet' ? 'linear-gradient(to right, #c742e4 50%, #15be75 50%)' : 
+                                                  bet.color === 'Red+Violet' ? 'linear-gradient(to right, #ff4148 50%, #c742e4 50%)' : '#15be75'
+                                    }}
+                                  >
+                                    {bet.color === 'Green+Violet' ? 'Violet Green' : bet.color === 'Red+Violet' ? 'Red Violet' : bet.color}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2 pl-3 mb-5 relative">
+                                  <div className="w-1.5 h-1.5 rounded-full border-2 border-[#ffcf24] shrink-0 z-10 bg-[#3d0f10] -ml-[13px]" />
+                                  <span className="text-white/40 text-[13px] italic">Waiting for results...</span>
+                                </div>
+                              )}
+
+                              {/* 2x2 Grid */}
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="bg-[#2c1012] rounded-lg p-3 flex flex-col items-center justify-center border border-white/5">
+                                  <span className="text-white/90 text-[15px] font-mono">₹{(bet.betAmount * 0.98).toFixed(2)}</span>
+                                  <span className="text-white/50 text-[12px] mt-0.5">Actual amount</span>
+                                </div>
+                                <div className="bg-[#2c1012] rounded-lg p-3 flex flex-col items-center justify-center border border-white/5">
+                                  <span className={`text-[15px] font-mono ${winnings > 0 ? 'text-[#15be75]' : 'text-white/50'}`}>
+                                    ₹{bet.resolved ? winnings.toFixed(2) : '0.00'}
+                                  </span>
+                                  <span className="text-white/50 text-[12px] mt-0.5">Winnings</span>
+                                </div>
+                                <div className="bg-[#2c1012] rounded-lg p-3 flex flex-col items-center justify-center border border-white/5">
+                                  <span className="text-white/90 text-[15px] font-mono">₹{(bet.betAmount * 0.02).toFixed(2)}</span>
+                                  <span className="text-white/50 text-[12px] mt-0.5">Handling fee</span>
+                                </div>
+                                <div className="bg-[#2c1012] rounded-lg p-3 flex flex-col items-center justify-center border border-white/5">
+                                  <span className={`text-[15px] font-mono ${!bet.resolved ? 'text-white/50' : profitLoss > 0 ? 'text-[#15be75]' : 'text-[#ffcf24]'}`}>
+                                    {!bet.resolved ? '₹0.00' : profitLoss > 0 ? `+₹${profitLoss.toFixed(2)}` : `-₹${Math.abs(profitLoss).toFixed(2)}`}
+                                  </span>
+                                  <span className="text-white/50 text-[12px] mt-0.5">Profit/loss</span>
+                                </div>
                               </div>
                             </div>
                           </div>
                         );
                       });
-                    }
                   })()}
                 </div>
               </motion.div>
@@ -3460,63 +3493,60 @@ export default function App() {
                 animate={{ x: 0 }}
                 exit={{ x: '100%' }}
                 transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                className="fixed inset-0 z-[200] bg-[#111111] flex flex-col font-sans select-none pointer-events-auto mx-auto max-w-[410px]"
+                className="fixed inset-0 z-[200] bg-[#2b0d0e] flex flex-col font-sans select-none pointer-events-auto mx-auto max-w-[410px]"
               >
-                {/* Header matching screenshot */}
-                <div className="bg-[#1c1c1e] h-[55px] flex items-center px-4 border-b border-white/5 shrink-0">
+                {/* Header */}
+                <div className="bg-[#4d1618] h-[55px] flex items-center px-2 shrink-0">
                   <button 
                     onClick={() => setShowGiftsOverlay(false)}
-                    className="w-10 h-10 flex items-center justify-center -ml-2 text-white/80 active:scale-90 transition active:bg-white/5 rounded-full cursor-pointer"
+                    className="w-12 h-12 flex items-center justify-center text-white active:bg-white/5 rounded-full cursor-pointer transition-colors"
                   >
-                    <ChevronLeft className="h-6 w-6 stroke-[3]" />
+                    <ChevronLeft className="h-6 w-6" />
                   </button>
-                  <h2 className="flex-1 text-center text-white font-bold text-[17px] tracking-wide">
-                    {selectedLang === 'en' ? 'Reward Redemption Code' : 'पुरस्कार मोचन कोड'}
+                  <h2 className="flex-1 text-center text-white font-medium text-[17px] mr-12">
+                    {selectedLang === 'en' ? 'Gift' : 'उपहार'}
                   </h2>
-                  <button className="w-10 h-10 flex items-center justify-center -mr-2 text-white/80 active:scale-90 transition rounded-full">
-                    <Receipt className="h-5 w-5" />
-                  </button>
                 </div>
 
                 {/* Main Scrollable Content */}
-                <div className="flex-1 overflow-y-auto scrollbar-hide flex flex-col pt-4 pb-12">
+                <div className="flex-1 overflow-y-auto scrollbar-hide flex flex-col pb-12">
                   
-                  {/* Community Banner - Fixed direct link and aspect ratio */}
-                  <div className="px-4 mb-4">
-                    <div className="w-full aspect-[23/8] bg-[#1c1c1e] rounded-xl overflow-hidden shadow-xl border border-white/5 relative">
-                      <img 
-                        src="https://i.ibb.co/q36czcLP/gift-banner.jpg" 
-                        alt="Join Community"
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          // Fallback to another version of the link if direct fails
-                          e.currentTarget.src = "https://i.ibb.co/zX9rZ6X/gift-banner.jpg"; 
-                        }}
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none" />
-                    </div>
+                  {/* Full width banner */}
+                  <div className="w-full aspect-[21/9] bg-[#2b0d0e] relative">
+                    <img 
+                      src="https://i.ibb.co/GQBty0nj/gift-D229-Mngm.png" 
+                      alt="Gift Banner"
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.currentTarget.src = "https://i.ibb.co/n0k8JQK/gift-banner-fallback.jpg"; // fallback
+                      }}
+                    />
                   </div>
 
                   {/* Redemption Card */}
-                  <div className="px-4 mb-4">
-                    <div className="bg-[#1c1c1e] rounded-2xl p-5 border border-white/5 shadow-2xl relative overflow-hidden">
-                      <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#ff3b30]" />
-                      
-                      <h3 className="text-white font-bold text-[15px] mb-6 flex items-center gap-2">
-                        <Gift className="h-5 w-5 text-[#ff3b30]" />
-                        {selectedLang === 'en' ? 'Hi! We have a gift for you' : 'नमस्ते! हमारे पास आपके लिए एक उपहार है'}
+                  <div className="px-4 mt-4">
+                    <div className="bg-[#3b1415] rounded-[10px] p-5 shadow-sm">
+                      <div className="space-y-1 mb-5">
+                        <p className="text-white/60 text-[14px]">
+                          {selectedLang === 'en' ? 'Hi' : 'नमस्ते'}
+                        </p>
+                        <p className="text-white/60 text-[14px]">
+                          {selectedLang === 'en' ? 'We have a gift for you' : 'हमारे पास आपके लिए एक उपहार है'}
+                        </p>
+                      </div>
+
+                      <h3 className="text-white text-[15px] mb-3">
+                        {selectedLang === 'en' ? 'Please enter the gift code below' : 'कृपया नीचे उपहार कोड दर्ज करें'}
                       </h3>
 
-                      <div className="space-y-6">
-                        <div className="relative">
-                          <input 
-                            type="text"
-                            placeholder={selectedLang === 'en' ? 'Please enter the gift code' : 'कृपया उपहार कोड दर्ज करें'}
-                            className="w-full bg-[#2a2a2c] outline-none text-white px-5 py-4 rounded-xl border border-white/5 text-[15px] placeholder:text-white/20 focus:border-[#ff3b30]/40 transition-all font-medium"
-                            value={giftCodeInput}
-                            onChange={(e) => setGiftCodeInput(e.target.value.toUpperCase())}
-                          />
-                        </div>
+                      <div className="space-y-4">
+                        <input 
+                          type="text"
+                          placeholder={selectedLang === 'en' ? 'Please enter gift code' : 'कृपया उपहार कोड दर्ज करें'}
+                          className="w-full bg-[#240b0c] outline-none text-white px-5 py-3.5 rounded-full text-[14px] placeholder:text-white/30 transition-all font-medium"
+                          value={giftCodeInput}
+                          onChange={(e) => setGiftCodeInput(e.target.value.toUpperCase())}
+                        />
 
                         <button 
                           disabled={claimingGift}
@@ -3629,69 +3659,55 @@ export default function App() {
                               setClaimingGift(false);
                             }
                           }}
-                          className={`w-full h-[52px] bg-gradient-to-b from-[#ff3b30] to-[#cc2211] rounded-full text-white font-black text-[16px] shadow-[0_4px_24px_rgba(204,34,17,0.5)] active:scale-[0.98] active:brightness-90 transition-all cursor-pointer flex items-center justify-center uppercase tracking-wide ${claimingGift ? 'opacity-60 pointer-events-none' : ''}`}
+                          className={`w-full h-[46px] bg-gradient-to-r from-[#ffc107] to-[#ff9800] rounded-full text-[#111111] font-medium text-[16px] active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center ${claimingGift ? 'opacity-70 pointer-events-none' : ''}`}
                         >
-                          {claimingGift ? (selectedLang === 'en' ? 'Claiming...' : 'दावा किया जा रहा है...') : (selectedLang === 'en' ? 'Confirm' : 'पुष्टि करें')}
+                          {claimingGift ? (selectedLang === 'en' ? 'Receiving...' : 'प्राप्त किया जा रहा है...') : (selectedLang === 'en' ? 'Receive' : 'प्राप्त करें')}
                         </button>
                       </div>
                     </div>
                   </div>
 
-                  {/* Official Channels Card - WhatsApp Removed */}
-                  <div className="px-4 mb-6">
-                    <div className="bg-[#1c1c1e] rounded-2xl p-5 border border-white/5 shadow-2xl space-y-4">
-                      <h4 className="text-white/70 font-bold text-[13px] tracking-tight">
-                        {selectedLang === 'en' ? 'Follow our official channel for more bonuses' : 'अधिक बोनस के लिए हमारे आधिकारिक चैनल का अनुसरण करें'}
-                      </h4>
-                      
-                      <div className="flex w-full">
-                        <button className="w-full h-[54px] bg-[#2a2a2c] rounded-xl flex items-center justify-center gap-3 text-white font-bold text-[14px] border border-white/5 active:scale-[0.98] transition-all shadow-lg hover:bg-[#323235]">
-                          <img src="https://cdn-icons-png.flaticon.com/512/2111/2111646.png" className="w-6 h-6 flex-shrink-0" alt="TG" />
-                          <span className="uppercase tracking-wide">JOIN OFFICIAL TELEGRAM CHANNEL</span>
-                        </button>
+                  {/* History Section */}
+                  <div className="px-4 mt-4">
+                    <div className="bg-[#3b1415] rounded-[10px] p-4 shadow-sm min-h-[300px] flex flex-col">
+                      <div className="flex items-center gap-2 mb-4">
+                        <div className="w-5 h-5 bg-[#ffc107] rounded flex items-center justify-center text-[#3b1415] p-0.5">
+                           <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zM5 8V6h14v2H5zm3 5h8v2H8v-2z"/></svg>
+                        </div>
+                        <span className="text-white text-[15px] font-medium">{selectedLang === 'en' ? 'History' : 'इतिहास'}</span>
                       </div>
+
+                      {claimedGifts.length === 0 ? (
+                        <div className="flex-1 flex flex-col items-center justify-center opacity-40">
+                          <svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" className="mb-2">
+                            <path d="M40 90C34.4772 90 30 85.5228 30 80V40C30 34.4772 34.4772 30 40 30H70C75.5228 30 80 34.4772 80 40V80C80 85.5228 75.5228 90 70 90H40Z" fill="#582a2b" opacity="0.4"/>
+                            <rect x="42" y="42" width="26" height="4" rx="2" fill="#75383a" opacity="0.6"/>
+                            <rect x="42" y="52" width="18" height="4" rx="2" fill="#75383a" opacity="0.6"/>
+                            <path d="M90 75C90 77.7614 87.7614 80 85 80H75V70H85C87.7614 70 90 72.2386 90 75Z" fill="#582a2b" opacity="0.4"/>
+                            <path d="M30 75C30 72.2386 32.2386 70 35 70H45V80H35C32.2386 80 30 77.7614 30 75Z" fill="#582a2b" opacity="0.4"/>
+                            <circle cx="85" cy="50" r="10" fill="#582a2b" opacity="0.2"/>
+                            <circle cx="25" cy="40" r="6" fill="#582a2b" opacity="0.2"/>
+                          </svg>
+                          <p className="text-white/60 text-[14px]">{selectedLang === 'en' ? 'No data' : 'कोई डेटा नहीं'}</p>
+                        </div>
+                      ) : (
+                        <div className="w-full space-y-3 mt-2">
+                          {claimedGifts.map((claim, idx) => (
+                            <div key={idx} className="flex justify-between items-center py-2 border-b border-white/5 last:border-0">
+                              <div className="space-y-1">
+                                <p className="text-white/90 text-[14px]">{claim.giftCode}</p>
+                                <p className="text-[12px] text-white/50">
+                                  {claim.claimedAt ? claim.claimedAt.replace('T', ' ').substring(0, 16) : ''}
+                                </p>
+                              </div>
+                              <div className="text-[#ff9800] text-[15px] font-medium">
+                                +₹{Number(claim.amount).toFixed(2)}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  </div>
-
-                  {/* History Header Bar */}
-                  <div className="mx-4 bg-[#3d2424] rounded-t-xl py-3 px-6 flex items-center justify-between text-white/90 font-bold text-xs uppercase tracking-wider shadow-md">
-                    <span>{selectedLang === 'en' ? 'Claim Time' : 'दावा समय'}</span>
-                    <span>{selectedLang === 'en' ? 'Bonus' : 'बोनस'}</span>
-                  </div>
-
-                  {/* Redemption History List / Dynamic State */}
-                  <div className="mx-4 bg-[#1c1c1e]/50 border-x border-b border-white/5 rounded-b-xl min-h-[300px] flex flex-col items-center justify-start py-4">
-                     {claimedGifts.length === 0 ? (
-                       <div className="flex flex-col items-center justify-center py-12">
-                         <div className="relative mb-6">
-                            <div className="w-24 h-24 bg-[#2a2a2c] rounded-2xl flex items-center justify-center opacity-40">
-                               <List className="h-10 w-10 text-white/50" />
-                            </div>
-                            <div className="absolute -right-2 -bottom-2 w-10 h-10 bg-[#3a3a3c] rounded-xl flex items-center justify-center shadow-lg border border-white/5 rotate-12">
-                               <Gift className="h-5 w-5 text-red-500/60" />
-                            </div>
-                         </div>
-                         <p className="text-white/30 font-bold text-[15px]">{selectedLang === 'en' ? 'No Records' : 'कोई रिकॉर्ड नहीं'}</p>
-                       </div>
-                     ) : (
-                       <div className="w-full divide-y divide-white/5 px-4 space-y-3">
-                         {claimedGifts.map((claim, idx) => (
-                           <div key={idx} className="flex justify-between items-center py-3">
-                             <div className="space-y-1 text-left">
-                               <p className="text-white font-extrabold text-[14px] leading-tight">{claim.giftCode}</p>
-                               <p className="text-[10px] text-white/40">
-                                 {claim.claimedAt ? claim.claimedAt.replace('T', ' ').substring(0, 16) : ''}
-                               </p>
-                             </div>
-                             <div className="text-right">
-                               <span className="text-emerald-400 font-display font-black text-sm">
-                                 +₹{Number(claim.amount).toFixed(2)}
-                               </span>
-                             </div>
-                           </div>
-                         ))}
-                       </div>
-                     )}
                   </div>
 
                 </div>
@@ -5324,9 +5340,8 @@ export default function App() {
                                  // Determine Icon styling based on choice
                                  let iconBg = "";
                                  let iconText = "text-white";
-                                 let iconStyle: React.CSSProperties = {};
+                                 let iconStyle = {};
                                  const choice = historyItem.userChoice;
-
                                  if (choice === 'Big') {
                                    iconBg = "bg-[#ffbb0d]";
                                    iconText = "text-[#4d1213]";
@@ -5347,19 +5362,17 @@ export default function App() {
                                  } else {
                                    iconBg = "bg-[#341113]";
                                  }
-
                                  const betKey = `${activeWingoRoom || '30s'}_${historyItem.period}_${historyItem.userChoice}_${realIdx}`;
                                  const isExpanded = expandedBetKey === betKey;
-
                                  return (
                                    <div key={realIdx} className="flex flex-col mb-1 shadow-xl animate-in fade-in slide-in-from-bottom-2">
-                                     <div 
-                                         onClick={() => setExpandedBetKey(isExpanded ? null : betKey)}
+                                     <div
+                                          onClick={() => setExpandedBetKey(isExpanded ? null : betKey)}
                                          className={`w-full p-4 flex items-center justify-between cursor-pointer border border-white/[0.04] transition-all active:scale-[0.98] ${isExpanded ? 'rounded-t-2xl' : 'rounded-2xl'}`}
                                          style={{ background: 'linear-gradient(180deg, #3d0f10 0%, #2c1012 100%)' }}>
                                        <div className="flex items-center gap-4">
-                                         <div 
-                                           className={`h-[38px] w-[44px] rounded-[12px] flex items-center justify-center font-black text-[13px] select-none shadow-lg border border-white/10 ${iconBg} ${iconText}`}
+                                         <div
+                                            className={`h-[38px] w-[44px] rounded-[12px] flex items-center justify-center font-black text-[13px] select-none shadow-lg border border-white/10 ${iconBg} ${iconText}`}
                                            style={iconStyle}
                                          >
                                            {historyItem.userChoice !== undefined ? historyItem.userChoice : historyItem.size}
@@ -5381,18 +5394,16 @@ export default function App() {
                                            </span>
                                        </div>
                                      </div>
-
                                      <AnimatePresence>
                                        {isExpanded && (
-                                         <motion.div 
-                                           initial={{ height: 0, opacity: 0 }}
+                                         <motion.div
+                                            initial={{ height: 0, opacity: 0 }}
                                             animate={{ height: 'auto', opacity: 1 }}
                                             exit={{ height: 0, opacity: 0 }}
                                             className="w-full bg-[#1e0506]/95 rounded-b-2xl border border-t-0 border-white/[0.04] overflow-hidden"
                                           >
                                             <div className="p-4 flex flex-col gap-3 font-sans text-[13px] text-white/70">
-                                              
-                                              <div className="flex justify-between items-center bg-[#2a0e10]/60 p-2.5 rounded-md border border-white/5">
+                                                                                            <div className="flex justify-between items-center bg-[#2a0e10]/60 p-2.5 rounded-md border border-white/5">
                                                 <span>{selectedLang === 'en' ? 'Order number' : 'ऑर्डर संख्या'}</span>
                                                 <div className="flex items-center gap-1.5 font-mono text-[11px] text-white/90">
                                                   {(() => {
@@ -5406,67 +5417,74 @@ export default function App() {
                                                   })()}
                                                 </div>
                                               </div>
-
                                               <div className="flex justify-between items-center px-1">
                                                 <span>{selectedLang === 'en' ? 'Period' : 'अवधि'}</span>
                                                 <span className="font-mono text-white/90">{historyItem.period}</span>
                                               </div>
-
                                               <div className="flex justify-between items-center px-1">
                                                 <span>{selectedLang === 'en' ? 'Purchase amount' : 'खरीद राशि'}</span>
                                                 <span className="font-mono text-white/90">₹{historyItem.betAmount.toFixed(2)}</span>
                                               </div>
-
                                               <div className="flex justify-between items-center px-1">
                                                 <span>{selectedLang === 'en' ? 'Quantity' : 'मात्रा'}</span>
                                                 <span className="font-mono text-white/90">1</span>
                                               </div>
-
                                               <div className="flex justify-between items-center px-1">
                                                 <span>{selectedLang === 'en' ? 'Amount after tax' : 'कर के बाद राशि'}</span>
                                                 <span className="font-mono text-[#ff4148] font-medium">₹{(historyItem.betAmount * 0.98).toFixed(2)}</span>
                                               </div>
-
                                               <div className="flex justify-between items-center px-1">
                                                 <span>{selectedLang === 'en' ? 'Tax' : 'कर'}</span>
                                                 <span className="font-mono text-white/90">₹{(historyItem.betAmount * 0.02).toFixed(2)}</span>
                                               </div>
-
                                               {historyItem.resolved && (
                                                 <div className="flex justify-between items-center px-1">
                                                   <span>{selectedLang === 'en' ? 'Result' : 'परिणाम'}</span>
-                                                  <div className="flex items-center gap-1.5 font-medium">
-                                                    <span className={historyItem.color === 'Green' ? 'text-[#15be75]' : historyItem.color === 'Red' ? 'text-[#ff4148]' : 'text-[#c742e4]'}>
-                                                      {historyItem.number} {historyItem.color} {historyItem.size}
-                                                    </span>
+                                                  <div className="flex items-center gap-2 font-medium">
+                                                    {/* Ball */}
+                                                    <div className="w-5 h-5 flex items-center justify-center shrink-0">
+                                                       <img src={LOTTERY_BALLS[historyItem.number as number]} className="w-full h-full object-contain drop-shadow-md" alt={historyItem.number?.toString()} />
+                                                    </div>
+                                                    {/* Size */}
+                                                    <div className={`px-1.5 py-0.5 rounded text-[10px] font-bold text-white ${historyItem.size === 'Big' ? 'bg-[#faa449]' : 'bg-[#508cf3]'}`}>
+                                                      {historyItem.size}
+                                                    </div>
+                                                    {/* Color */}
+                                                    <div 
+                                                      className="px-1.5 py-0.5 rounded text-[10px] font-bold text-white"
+                                                      style={{
+                                                        background: historyItem.color === 'Green' ? '#15be75' : 
+                                                                    historyItem.color === 'Red' ? '#ff4148' : 
+                                                                    historyItem.color === 'Violet' ? '#c742e4' : 
+                                                                    historyItem.color === 'Green+Violet' ? 'linear-gradient(to right, #c742e4 50%, #15be75 50%)' : 
+                                                                    historyItem.color === 'Red+Violet' ? 'linear-gradient(to right, #ff4148 50%, #c742e4 50%)' : '#15be75'
+                                                      }}
+                                                    >
+                                                      {historyItem.color === 'Green+Violet' ? 'Violet Green' : historyItem.color === 'Red+Violet' ? 'Red Violet' : historyItem.color}
+                                                    </div>
                                                   </div>
                                                 </div>
                                               )}
-
                                               <div className="flex justify-between items-center px-1">
                                                 <span>{selectedLang === 'en' ? 'Select' : 'चुनें'}</span>
                                                 <span className="font-medium text-white/90">{historyItem.userChoice}</span>
                                               </div>
-
                                               <div className="flex justify-between items-center px-1">
                                                 <span>{selectedLang === 'en' ? 'Status' : 'स्थिति'}</span>
                                                 <span className={`font-medium ${!historyItem.resolved ? 'text-[#ffbc0d]' : historyItem.winLoss === 'Win' ? 'text-[#15be75]' : 'text-[#ff4148]'}`}>
                                                   {!historyItem.resolved ? (selectedLang === 'en' ? 'Pending' : 'लंबित') : historyItem.winLoss === 'Win' ? (selectedLang === 'en' ? 'Succeed' : 'सफल') : (selectedLang === 'en' ? 'Failed' : 'विफल')}
                                                 </span>
                                               </div>
-
                                               <div className="flex justify-between items-center px-1">
                                                 <span>{selectedLang === 'en' ? 'Win/lose' : 'जीत/हार'}</span>
                                                 <span className={`font-mono font-medium tracking-tight ${!historyItem.resolved ? 'text-white/60' : historyItem.winLoss === 'Win' ? 'text-[#15be75]' : 'text-[#ff4148]'}`}>
                                                   {!historyItem.resolved ? '₹0.00' : historyItem.winLoss === 'Win' ? `+₹${(historyItem.betAmount * (typeof historyItem.userChoice === 'number' ? 8.82 : historyItem.userChoice === 'Violet' ? 4.41 : (historyItem.userChoice === 'Green' && historyItem.color === 'Green+Violet') ? 1.47 : (historyItem.userChoice === 'Red' && historyItem.color === 'Red+Violet') ? 1.47 : 1.96)).toFixed(2)}` : `-₹${historyItem.betAmount.toFixed(2)}`}
                                                 </span>
                                               </div>
-
                                               <div className="flex justify-between items-center px-1 border-t border-white/5 pt-3 mt-1">
                                                 <span>{selectedLang === 'en' ? 'Order time' : 'ऑर्डर का समय'}</span>
                                                 <span className="font-mono text-white/50 text-[11px]">{historyItem.timestamp}</span>
                                               </div>
-
                                             </div>
                                           </motion.div>
                                         )}
@@ -5546,7 +5564,7 @@ export default function App() {
                             }}
                           >
                             <img 
-                              src="https://i.ibb.co/ychmgkdn/file-00000000ef40720888a7368f6c1e9162.png" 
+                              src="https://i.ibb.co/cSDV47Lj/file-0000000064607209812f3acf878dd224.png" 
                               alt="Promo Banner 1"
                               className="w-full h-full object-cover"
                               referrerPolicy="no-referrer"
@@ -5858,7 +5876,7 @@ export default function App() {
                         },
                         { 
                           id: '5m', 
-                          name: selectedLang === 'en' ? 'Millennium 5' : 'मिलेनियम ५', 
+                          name: selectedLang === 'en' ? 'Wingo 5Min' : 'विंगो ५ मिनट', 
                           time: '5M', 
                           image: 'https://i.ibb.co/WNQZyCdw/file-0000000073407209b9bf684dc8b4aeb5.png',
                           tag: selectedLang === 'en' ? 'Super Premium' : 'सुपर प्रीमियम',
@@ -6209,14 +6227,10 @@ export default function App() {
                 inviteeDepositCount={inviteeDepositCount}
                 usedSpins={usedSpins}
                 uid={uid}
-                onSpinUsed={async () => {
-                  const newUsed = usedSpins + 1;
-                  setUsedSpins(newUsed);
-                  const userUid = auth.currentUser?.uid;
-                  if (userUid) {
-                    const userDocRef = doc(db, 'users', userUid);
-                    await updateDoc(userDocRef, { usedSpins: newUsed });
-                  }
+                firebaseUid={auth.currentUser?.uid || ''}
+                onSpinUsed={() => {
+                  // DB update is now handled by InviteWheelView to prevent race conditions
+                  setUsedSpins(prev => prev + 1);
                 }}
               />
             ) : (
@@ -6298,7 +6312,7 @@ export default function App() {
                         <div className="bg-gradient-to-b from-[#341113] via-[#1a0506] to-[#0d0203] rounded-2xl overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.65)] border border-[#ffbb0d]/15 hover:border-[#ffbb0d]/40 transition-all duration-300 relative group flex flex-col">
                           <div className="relative h-[130px] w-full overflow-hidden shrink-0">
                             <img 
-                              src="https://i.ibb.co/ychmgkdn/file-00000000ef40720888a7368f6c1e9162.png" 
+                              src="https://i.ibb.co/cSDV47Lj/file-0000000064607209812f3acf878dd224.png" 
                               alt="Lucky Spin Wheel Promo"
                               className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500"
                               referrerPolicy="no-referrer"
@@ -7362,7 +7376,7 @@ export default function App() {
       )}
 
       {/* Progressive Web App (PWA) Quick Install banner and modal overlay */}
-      <QuickInstall selectedLang={selectedLang} currentTab={currentTab} />
+      {/* <QuickInstall selectedLang={selectedLang} currentTab={currentTab} /> */}
 
       {/* 200 Deposit Required Warning Modal */}
       <AnimatePresence>

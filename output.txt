@@ -1,0 +1,189 @@
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+
+          {/* FULL SCREEN ANNOUNCEMENT OVERLAY (Neon Trade Style) */}
+          <AnimatePresence>
+            {showAnnouncements && (
+              <motion.div 
+                initial={{ x: '100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '100%' }}
+                transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                className="fixed inset-0 z-[200] bg-[#4a0f10] flex flex-col font-sans select-none pointer-events-auto"
+              >
+                {/* Announcement Header */}
+                <div className="bg-[#4a0f10] h-[55px] flex items-center px-4 border-b border-white/5 shrink-0">
+                  <button 
+                    onClick={() => setShowAnnouncements(false)}
+                    className="w-10 h-10 flex items-center justify-center -ml-2 text-white/80 active:scale-90 transition active:bg-white/5 rounded-full cursor-pointer"
+                  >
+                    <ChevronLeft className="h-6 w-6" />
+                  </button>
+                  <h2 className="flex-1 text-center mr-8 text-white font-bold text-[17px]">
+                    Announcement
+                  </h2>
+                </div>
+
+                {/* Announcement List */}
+                <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4 scrollbar-hide">
+                  {ANNOUNCEMENTS.map((item) => (
+                    <div key={item.id} className="bg-[#5c1c1e] rounded-2xl p-5 border border-white/5 shadow-lg relative overflow-hidden">
+                      {/* Yellow Speaker Icon Header */}
+                      <div className="flex items-start gap-4">
+                        <div className="w-10 h-10 bg-[#ffbc0d]/10 rounded-full flex items-center justify-center shrink-0">
+                          <Bell className="h-6 w-6 text-[#ffbc0d]" />
+                        </div>
+                        <div className="flex-1 text-left">
+                          <h3 className="text-[#ffbc0d] font-black text-[15px] leading-tight mb-2 uppercase tracking-wide">
+                            {item.title}
+                          </h3>
+                          <p className="text-white/80 text-[12px] leading-relaxed font-medium">
+                            {item.content}
+                          </p>
+                          <div className="mt-4 flex items-center justify-between">
+                            <span className="text-white/50 text-[11px] font-medium font-mono">
+                              {item.date}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  
+                  <div className="py-6 text-center">
+                    <span className="text-white/20 text-[12px] font-bold uppercase tracking-[3px] opacity-50">No more</span>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* FULL SCREEN BALANCE RECORDS OVERLAY */}
+          <AnimatePresence>
+            {showBalanceRecords && (
+              <motion.div 
+                initial={{ x: '100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '100%' }}
+                transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                className="fixed inset-0 z-[200] bg-[#4a0f10] flex flex-col font-sans select-none pointer-events-auto"
+              >
+                {/* Header */}
+                <div className="bg-[#4a0f10] h-[55px] flex items-center px-4 border-b border-white/5 shrink-0">
+                  <button 
+                    onClick={() => setShowBalanceRecords(false)}
+                    className="w-10 h-10 flex items-center justify-center -ml-2 text-white/80 active:scale-90 transition active:bg-white/5 rounded-full cursor-pointer"
+                  >
+                    <ChevronLeft className="h-6 w-6" />
+                  </button>
+                  <h2 className="flex-1 text-center text-white font-bold text-[17px]">
+                    {selectedLang === 'en' ? 'Balance History' : 'शेष राशि का इतिहास'}
+                  </h2>
+                  <div className="w-10 h-10" />
+                </div>
+
+                {/* Records List */}
+                <div className="flex-1 overflow-y-auto px-4 py-5 space-y-3.5 scrollbar-hide">
+                  {balanceRecords.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center text-center opacity-60 py-20">
+                      <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mb-4 border border-white/5">
+                        <Receipt className="h-8 w-8 text-neutral-400" />
+                      </div>
+                      <h3 className="text-white font-bold text-base mb-1">
+                        {selectedLang === 'en' ? 'No Records Found' : 'कोई रिकॉर्ड नहीं मिला'}
+                      </h3>
+                      <p className="text-white/60 text-[12px]">
+                        {selectedLang === 'en' ? 'Your transactions will appear here.' : 'आपके लेनदेन यहाँ दिखाई देंगे।'}
+                      </p>
+                    </div>
+                  ) : (
+                    balanceRecords.map((rec: any) => {
+                      const isPos = rec.amount >= 0;
+                      return (
+                        <div 
+                          key={rec.id} 
+                          className="bg-[#5c1c1e] rounded-xl p-4 border border-white/5 flex flex-col justify-between shadow-md"
+                        >
+                          <div className="flex items-center justify-between mb-3">
+                            <span className="text-[12px] uppercase font-bold tracking-widest text-[#ffbc0d] bg-black/30 border border-white/5 px-2.5 py-1 rounded-md">
+                              {rec.type === 'deposit' ? (selectedLang === 'en' ? 'Deposit' : 'जमा') :
+                               rec.type === 'withdraw' ? (selectedLang === 'en' ? 'Withdrawal' : 'निकासी') :
+                               rec.type === 'reward' ? (selectedLang === 'en' ? 'Rebate/Bonus' : 'बोनस / रिबेट') :
+                               (selectedLang === 'en' ? 'Game Play' : 'खेल दांव')}
+                            </span>
+                            <span className="text-[10px] text-white/40 font-semibold font-mono tracking-wider">
+                              ID: {rec.id.slice(-8).toUpperCase()}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <div className="flex flex-col text-left">
+                              <span className="text-[14px] text-white font-bold tracking-tight">
+                                {selectedLang === 'en' ? rec.titleEn : rec.titleHi}
+                              </span>
+                              <span className="text-[11px] text-white/45 mt-1 font-mono">{rec.date}</span>
+                            </div>
+                            <div className="flex flex-col items-end">
+                              <span className={`text-[17px] font-black font-mono ${isPos ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                {isPos ? '+' : ''}₹{rec.amount.toFixed(2)}
+                              </span>
+                              <span className="text-[10px] text-emerald-400/80 bg-emerald-950/20 px-2 py-0.5 rounded border border-emerald-500/10 font-bold uppercase mt-1">
+                                {selectedLang === 'en' ? 'Success' : 'सफल'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* FULL SCREEN GAME HISTORY OVERLAY */}
+          <AnimatePresence>
+            {showGameHistoryOverlay && (
+              <motion.div 
+                initial={{ x: '100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '100%' }}
+                transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                className="fixed inset-0 z-[200] bg-[#4a0f10] flex flex-col font-sans select-none pointer-events-auto"
+              >
+                {/* Header */}
+                <div className="bg-[#4a0f10] h-[55px] flex items-center px-4 border-b border-white/5 shrink-0">
+                  <button 
+                    onClick={() => setShowGameHistoryOverlay(false)}
+                    className="w-10 h-10 flex items-center justify-center -ml-2 text-white/80 active:scale-95 transition active:bg-white/5 rounded-full cursor-pointer"
+                  >
+                    <ChevronLeft className="h-6 w-6" />
+                  </button>
+                  <h2 className="flex-1 text-center text-white font-bold text-[17px]">
+                    {selectedLang === 'en' ? 'Game Betting History' : 'खेल सट्टेबाजी इतिहास'}
+                  </h2>
+                  <div className="w-10 h-10" />
+                </div>
+
+                {/* Room Tabs inside game history */}
+                <div className="grid grid-cols-4 bg-black/25 p-1.5 border-b border-white/5 shrink-0">
+                  {(['30s', '1m', '3m', '5m'] as const).map((roomKey) => {
+                    const isActive = gameHistoryOverlayRoom === roomKey;
+                    return (
+                      <button
+                        key={roomKey}
+                        onClick={() => setGameHistoryOverlayRoom(roomKey)}
+                        className={`py-3 text-[12px] font-black uppercase text-center tracking-wider transition rounded-lg ${
+                          isActive 
+                            ? 'bg-[#ffbc0d] text-[#4a0f10] shadow-md font-extrabold' 
+                            : 'text-white/60 hover:text-white hover:bg-white/5'
+                        }`}
+                      >
+                        {roomKey === '30s' ? '30S' : roomKey.toUpperCase()}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                

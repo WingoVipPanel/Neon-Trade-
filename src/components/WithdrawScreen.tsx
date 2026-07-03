@@ -50,14 +50,6 @@ export default function WithdrawScreen({ onClose, balance, onRefresh, onAddNotif
         setTotalDeposits(parseFloat(data.totalDeposits || '0'));
         const wonOver = data.hasWonOver4000 === true;
         setHasWonOver4000(wonOver);
-        
-        // Auto flag hasWonOver4000 if balance is currently > 4000
-        const currentBal = parseFloat(data.balance || '0');
-        if (currentBal > 4000 && !wonOver) {
-          updateDoc(doc(db, 'users', currentUser.uid), {
-            hasWonOver4000: true
-          }).catch(err => console.warn("Failed to set hasWonOver4000 flag:", err));
-        }
       }
     });
 
@@ -112,8 +104,8 @@ export default function WithdrawScreen({ onClose, balance, onRefresh, onAddNotif
       setError('Insufficient balance');
     } else if (hasWonOver4000 || ((balance > 4000 || num > 4000) && totalDeposits < 2000)) {
       setError(selectedLang === 'en' 
-        ? '⚠️ High Win Restriction: Winning amount is too high, and deposit is too low! Please deposit ₹2,000 first.' 
-        : '⚠️ निकासी सीमा: आपका विनिंग अमाउंट बहुत ज्यादा है और डिपॉजिट बहुत कम है! कृपया पहले ₹2,000 डिपॉजिट करें।'
+        ? 'High Win Restriction: Winning amount is too high, and deposit is too low! Please deposit ₹2,000 first.' 
+        : 'निकासी सीमा: आपका विनिंग अमाउंट बहुत ज्यादा है और डिपॉजिट बहुत कम है! कृपया पहले ₹2,000 डिपॉजिट करें।'
       );
     } else {
       setError('');
@@ -141,8 +133,8 @@ export default function WithdrawScreen({ onClose, balance, onRefresh, onAddNotif
           if (hasWonOver4000 || ((currentBal > 4000 || withdrawNum > 4000) && userTotalDeps < 2000)) {
             setShowHighWinWarning(true);
             setError(selectedLang === 'en' 
-              ? '⚠️ High Win Restriction: Winning amount is too high, and deposit is too low! Please deposit ₹2,000 first.' 
-              : '⚠️ निकासी सीमा: आपका विनिंग अमाउंट बहुत ज्यादा है और डिपॉजिट बहुत कम है! कृपया पहले ₹2,000 डिपॉजिट करें।'
+              ? 'High Win Restriction: Winning amount is too high, and deposit is too low! Please deposit ₹2,000 first.' 
+              : 'निकासी सीमा: आपका विनिंग अमाउंट बहुत ज्यादा है और डिपॉजिट बहुत कम है! कृपया पहले ₹2,000 डिपॉजिट करें।'
             );
             return;
           }
@@ -413,21 +405,16 @@ export default function WithdrawScreen({ onClose, balance, onRefresh, onAddNotif
 
           {/* High Win & Low Deposit Warning Alert Banner */}
           {isHighWinRestricted && (
-            <div className="bg-[#FF4148]/10 border border-[#FF4148]/30 rounded-[12px] p-3.5 mb-4 text-left">
-              <div className="flex items-start gap-2">
-                <span className="text-rose-500 text-lg mt-0.5">⚠️</span>
-                <div>
-                  <h4 className="text-rose-400 font-extrabold text-[12px] uppercase tracking-wide">
-                    Security Notice / महत्वपूर्ण सूचना
-                  </h4>
-                  <p className="text-white/95 text-[11.5px] mt-1 leading-relaxed font-semibold">
-                    Dear user, your winning amount is too high but your deposit is very low. You cannot process this withdrawal. Please complete a deposit of ₹2,000 first to verify your account and release your winnings.
-                  </p>
-                  <p className="text-[#FFD700] text-[11.5px] mt-1.5 leading-relaxed font-bold font-sans">
-                    प्रिय उपयोगकर्ता, आपका विनिंग अमाउंट बहुत ज्यादा है लेकिन डिपॉजिट बहुत कम है। आप इस पैसे को अभी विथड्रॉ नहीं कर सकते। कृपया विथड्रॉवल को चालू करने के लिए पहले ₹2,000 डिपाजिट करें।
-                  </p>
-                </div>
-              </div>
+            <div className="bg-[#3d0f10] border border-[#FF4148]/20 rounded-[12px] p-4 mb-4 text-left shadow-sm">
+              <h4 className="text-[#FF4148] font-bold text-[12px] uppercase tracking-wide mb-1.5">
+                Security Notice / महत्वपूर्ण सूचना
+              </h4>
+              <p className="text-white/80 text-[11px] leading-relaxed mb-1.5">
+                Dear user, your winning amount is too high but your deposit is very low. You cannot process this withdrawal. Please complete a deposit of ₹2,000 first to verify your account and release your winnings.
+              </p>
+              <p className="text-[#FF4148]/90 text-[11px] leading-relaxed">
+                प्रिय उपयोगकर्ता, आपका विनिंग अमाउंट बहुत ज्यादा है लेकिन डिपॉजिट बहुत कम है। आप इस पैसे को अभी विथड्रॉ नहीं कर सकते। कृपया विथड्रॉवल को चालू करने के लिए पहले ₹2,000 डिपाजिट करें।
+              </p>
             </div>
           )}
 
@@ -448,27 +435,27 @@ export default function WithdrawScreen({ onClose, balance, onRefresh, onAddNotif
         <div className="bg-[#3d0f10] rounded-[12px] p-4 mb-6 border border-white/[0.03] shadow-sm">
           <ul className="space-y-2.5 text-[11.5px] text-white/60 leading-snug">
             <li className="flex items-start gap-2.5">
-               <span className="text-[#FFD700] text-[10px] mt-1 shrink-0">◆</span>
+               <div className="w-1.5 h-1.5 bg-[#FFD700] rotate-45 shrink-0 mt-1.5 shadow-[0_0_2px_rgba(255,215,0,0.5)]" />
                <span>Need to bet <span className="text-[#FF4148] font-bold">₹0.00</span> to be able to withdraw</span>
             </li>
             <li className="flex items-start gap-2.5">
-               <span className="text-[#FFD700] text-[10px] mt-1 shrink-0">◆</span>
+               <div className="w-1.5 h-1.5 bg-[#FFD700] rotate-45 shrink-0 mt-1.5 shadow-[0_0_2px_rgba(255,215,0,0.5)]" />
                <span>Withdraw time <span className="text-[#FF4148] font-bold">00:00-23:59</span></span>
             </li>
             <li className="flex items-start gap-2.5">
-               <span className="text-[#FFD700] text-[10px] mt-1 shrink-0">◆</span>
+               <div className="w-1.5 h-1.5 bg-[#FFD700] rotate-45 shrink-0 mt-1.5 shadow-[0_0_2px_rgba(255,215,0,0.5)]" />
                <span>Inday Remaining Withdrawal Times <span className="text-[#FF4148] font-bold">3</span></span>
             </li>
             <li className="flex items-start gap-2.5">
-               <span className="text-[#FFD700] text-[10px] mt-1 shrink-0">◆</span>
+               <div className="w-1.5 h-1.5 bg-[#FFD700] rotate-45 shrink-0 mt-1.5 shadow-[0_0_2px_rgba(255,215,0,0.5)]" />
                <span>Withdrawal amount range <span className="text-[#FF4148] font-bold">₹110.00-₹50,000.00</span></span>
             </li>
             <li className="flex items-start gap-2.5">
-               <span className="text-[#FFD700] text-[10px] mt-1 shrink-0">◆</span>
+               <div className="w-1.5 h-1.5 bg-[#FFD700] rotate-45 shrink-0 mt-1.5 shadow-[0_0_2px_rgba(255,215,0,0.5)]" />
                <span>Please confirm your beneficial account information before withdrawing. If your information is incorrect, our company will not be liable for the amount of loss</span>
             </li>
             <li className="flex items-start gap-2.5">
-               <span className="text-[#FFD700] text-[10px] mt-1 shrink-0">◆</span>
+               <div className="w-1.5 h-1.5 bg-[#FFD700] rotate-45 shrink-0 mt-1.5 shadow-[0_0_2px_rgba(255,215,0,0.5)]" />
                <span>If your beneficial information is incorrect, please contact customer service</span>
             </li>
           </ul>
@@ -586,73 +573,56 @@ export default function WithdrawScreen({ onClose, balance, onRefresh, onAddNotif
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 z-[999]"
+            className="fixed inset-0 z-[1000] flex items-center justify-center bg-transparent pointer-events-none p-6"
           >
             <motion.div
-              initial={{ scale: 0.95, y: 20 }}
+              initial={{ scale: 0.9, y: 10 }}
               animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.95, y: 20 }}
-              className="bg-[#2c1012] border border-[#FFD700]/30 rounded-[20px] p-6 max-w-[340px] w-full text-center shadow-2xl relative"
+              exit={{ scale: 0.9, y: 10 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="bg-black/40 backdrop-blur-md border border-white/10 shadow-[0_15px_35px_rgba(0,0,0,0.6)] w-full max-w-[280px] rounded-[18px] pt-5 overflow-hidden flex flex-col items-center text-center relative font-sans pointer-events-auto"
             >
-              <div className="absolute top-4 right-4">
-                <button 
-                  onClick={() => setShowHighWinWarning(false)} 
-                  className="text-white/40 hover:text-white transition cursor-pointer"
-                >
-                  <X className="h-5 w-5" />
-                </button>
+              {/* Exclamation mark */}
+              <div className="text-white text-3xl font-black mb-3 select-none leading-none">
+                !
               </div>
 
-              {/* Icon */}
-              <div className="w-16 h-16 bg-[#FF4148]/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-[#FF4148]/30">
-                <span className="text-3xl animate-bounce">⚠️</span>
-              </div>
+              {/* Divider line under exclamation */}
+              <div className="w-full h-[1px] bg-white/10" />
 
-              <h3 className="text-[#FF4148] font-black text-[17px] tracking-tight mb-2.5">
-                ⚠️ Security Notice / सुरक्षा नोटिस
-              </h3>
-
-              <div className="space-y-3.5 text-left bg-black/25 p-4 rounded-xl border border-white/5 mb-5">
-                <p className="text-white/95 text-[11.5px] font-semibold leading-relaxed">
-                  Dear user, your winning amount is too high but your deposit is very low. You cannot process this withdrawal. Please complete a deposit of ₹2,000 first to verify your account and release your winnings.
-                </p>
-                <div className="border-t border-white/10 my-1 pt-1"></div>
-                <p className="text-[#FFD700] text-[11.5px] font-bold leading-relaxed">
-                  प्रिय उपयोगकर्ता, आपका विनिंग अमाउंट बहुत ज्यादा है लेकिन डिपॉजिट बहुत कम है। आप इस पैसे को अभी विथड्रॉ नहीं कर सकते। कृपया विथड्रॉवल को चालू करने के लिए पहले ₹2,000 डिपाजिट करें।
-                </p>
-                
-                <div className="border-t border-white/10 pt-2.5 flex justify-between text-[11px] font-bold">
-                  <span className="text-white/50">Current Balance:</span>
-                  <span className="text-[#FFD700]">₹{balance.toFixed(2)}</span>
-                </div>
-                
-                <div className="flex justify-between text-[11px] font-bold">
-                  <span className="text-white/50">Your Total Deposit:</span>
-                  <span className="text-[#FF4148]">₹{totalDeposits.toFixed(2)}</span>
+              {/* Modal Body */}
+              <div className="p-4 flex flex-col items-center">
+                {/* Error Header */}
+                <div className="text-[14px] font-bold text-[#FF4148] leading-tight tracking-wide mb-2 uppercase">
+                  Withdrawal Restricted
                 </div>
 
-                <div className="flex justify-between text-[11px] font-bold border-t border-white/5 pt-2.5">
-                  <span className="text-white/50">Required Total Deposit:</span>
-                  <span className="text-emerald-400">₹2,000.00</span>
+                {/* Subtitle Message precisely configured as requested */}
+                <div className="text-[12.5px] text-neutral-200 font-medium px-2 mt-1 leading-snug">
+                  {selectedLang === 'en' 
+                    ? '₹2000 deposit required to process this withdrawal.' 
+                    : 'इस विथड्रॉवल को प्रोसेस करने के लिए ₹2000 का डिपॉजिट आवश्यक है।'}
                 </div>
               </div>
 
-              <div className="flex flex-col gap-2.5">
+              {/* Action buttons integrated neatly with Goagames aesthetics */}
+              <div className="w-full flex border-t border-white/10 divide-x divide-white/10 mt-2">
                 <button
+                  type="button"
                   onClick={() => {
                     setShowHighWinWarning(false);
                     onClose();
                   }}
-                  className="w-full bg-gradient-to-r from-[#FFC107] to-[#FFD700] hover:brightness-110 active:scale-95 transition-all text-[#2c1012] py-3 rounded-full font-black text-[12px] shadow-[0_4px_12px_rgba(255,215,0,0.25)] cursor-pointer"
+                  className="w-1/2 py-3 text-[12px] font-sans font-black text-blue-400 hover:bg-white/5 active:bg-white/10 transition cursor-pointer text-center uppercase tracking-wide"
                 >
-                  Deposit ₹2,000 Now / अभी ₹2,000 डिपॉजिट करें
+                  {selectedLang === 'en' ? 'Deposit' : 'डिपॉजिट'}
                 </button>
-                
                 <button
+                  type="button"
                   onClick={() => setShowHighWinWarning(false)}
-                  className="w-full bg-white/5 hover:bg-white/10 text-white/70 py-2.5 rounded-full font-bold text-[11px] active:scale-95 transition-all cursor-pointer"
+                  className="w-1/2 py-3 text-[12px] font-sans font-black text-neutral-400 hover:text-white hover:bg-white/5 active:bg-white/10 transition cursor-pointer text-center uppercase tracking-wide"
                 >
-                  Cancel / रद्द करें
+                  {selectedLang === 'en' ? 'Close' : 'बंद करें'}
                 </button>
               </div>
             </motion.div>
