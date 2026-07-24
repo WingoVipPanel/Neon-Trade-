@@ -265,7 +265,7 @@ export default function WithdrawScreen({ onClose, balance, onRefresh, onAddNotif
   const isButtonDisabled = !amount || parseFloat(amount) < 110 || (!!error && !isHighWinRestricted);
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto w-full min-h-screen font-sans flex flex-col mx-auto max-w-[410px] bg-[#2c1012]">
+    <div className="fixed inset-0 z-50 overflow-y-auto w-full min-h-screen font-sans flex flex-col mx-auto max-w-[480px] bg-[#2c1012]">
       
       {/* Header */}
       <div className="sticky top-0 w-full h-[48px] bg-[#3d0f10] border-b border-white/5 flex items-center px-3 z-20 shadow-md">
@@ -479,8 +479,9 @@ export default function WithdrawScreen({ onClose, balance, onRefresh, onAddNotif
         ) : (
           <div className="space-y-4">
             {withdrawHistory.slice(0, 5).map((item) => {
-              const isPending = item.status === 'pending';
-              const isRejected = item.status === 'rejected';
+              const currentStatus = (item.status || '').toLowerCase();
+              const isPending = currentStatus === 'pending';
+              const isRejected = currentStatus === 'rejected';
               let statusText = isPending ? 'Processing' : (isRejected ? 'Rejected' : 'Completed');
               let statusColor = isPending ? 'text-[#FFD700]' : (isRejected ? 'text-[#FF4148]' : 'text-emerald-400');
 
@@ -715,7 +716,7 @@ function BindMethodModal({ onClose, initialMethod, requestedTab }: any) {
 
   if (isSelectingBank) {
     return (
-      <div className="fixed inset-0 z-[70] bg-[#3d0f10] font-sans flex flex-col mx-auto max-w-[410px]">
+      <div className="fixed inset-0 z-[70] bg-[#3d0f10] font-sans flex flex-col mx-auto max-w-[480px]">
         <div className="sticky top-0 w-full h-[48px] bg-[#3d0f10] flex items-center px-3 z-20">
           <button onClick={() => setIsSelectingBank(false)} className="h-10 w-10 flex items-center justify-start text-white cursor-pointer active:scale-90 transition-transform">
             <ChevronLeft className="h-5 w-5" />
@@ -753,7 +754,7 @@ function BindMethodModal({ onClose, initialMethod, requestedTab }: any) {
   }
 
   return (
-    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} className="fixed inset-0 z-[60] bg-[#3d0f10] font-sans flex flex-col mx-auto max-w-[410px]">
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} className="fixed inset-0 z-[60] bg-[#3d0f10] font-sans flex flex-col mx-auto max-w-[480px]">
       <div className="sticky top-0 w-full h-[48px] bg-[#3d0f10] flex items-center px-3 z-20">
         <button onClick={onClose} className="h-10 w-10 flex items-center justify-start text-white cursor-pointer active:scale-90 transition-transform">
           <ChevronLeft className="h-5 w-5" />

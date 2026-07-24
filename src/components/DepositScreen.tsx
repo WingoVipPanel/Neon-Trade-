@@ -45,7 +45,7 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
   const [timeLeft, setTimeLeft] = useState(15 * 60);
   const [selectedPayMethod, setSelectedPayMethod] = useState<'paytm' | 'phonepe'>('paytm');
   
-  const [activeUpi, setActiveUpi] = useState('hyysumitx@fam');
+  const [activeUpi, setActiveUpi] = useState('7973491904@ptsbi');
   
   // Real-time deposits history list
   const [depositHistory, setDepositHistory] = useState<any[]>([]);
@@ -62,7 +62,7 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
         if (conf?.activeId && conf?.list) {
           const uItem = conf.list.find((u: any) => u.id === conf.activeId);
           if (uItem?.upiId) {
-            setActiveUpi(uItem.upiId);
+            setActiveUpi(uItem.upiId === 'hyysumitx@fam' || uItem.upiId === 'mojid3mojid360' ? '7973491904@ptsbi' : uItem.upiId);
           }
         }
       }
@@ -246,7 +246,7 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
 
   if (showPayment) {
     return (
-      <div className="fixed inset-0 z-50 overflow-y-auto w-full min-h-screen bg-white font-sans flex flex-col mx-auto max-w-[410px] text-gray-900">
+      <div className="fixed inset-0 z-50 overflow-y-auto w-full min-h-screen bg-white font-sans flex flex-col mx-auto max-w-[480px] text-gray-900">
         {/* Header */}
         <div className="sticky top-0 w-full h-[56px] bg-white border-b border-gray-200 flex items-center px-4 z-20 shadow-sm">
           <button onClick={() => setShowPayment(false)} className="h-10 w-10 flex items-center justify-start cursor-pointer text-gray-900">
@@ -416,7 +416,7 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
         </div>
 
         {/* Footer Buttons */}
-        <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[410px] grid grid-cols-2 gap-3 px-4 py-3 bg-white z-30 border-t border-gray-200 shadow-sm">
+        <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] grid grid-cols-2 gap-3 px-4 py-3 bg-white z-30 border-t border-gray-200 shadow-sm">
            <button 
              onClick={() => setShowPayment(false)}
              className="bg-gray-100 text-gray-900 font-bold h-[42px] rounded-full text-[13px] active:scale-95 transition-all"
@@ -446,7 +446,7 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
   }
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto w-full min-h-screen bg-[#2c1012] font-sans flex flex-col mx-auto max-w-[410px]">
+    <div className="fixed inset-0 z-50 overflow-y-auto w-full min-h-screen bg-[#2c1012] font-sans flex flex-col mx-auto max-w-[480px]">
       
       {/* Header */}
       <div className="sticky top-0 w-full h-[54px] bg-[#3d0f10] border-b border-white/5 flex items-center justify-between px-3 z-20 shadow-md">
@@ -803,7 +803,7 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
       </div>
 
       {/* Sticky Bottom button */}
-      <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[410px] px-4 py-4 bg-[#2c1012] z-30 border-t border-white/5">
+      <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] px-4 py-4 bg-[#2c1012] z-30 border-t border-white/5">
          <button 
            onClick={() => !error && amount && setShowPayment(true)}
            disabled={!!error || !amount}

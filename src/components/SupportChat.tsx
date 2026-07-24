@@ -82,7 +82,7 @@ export default function SupportChat({ onClose, userName = 'Lucky Gamer', userAva
       initial={{ opacity: 0, x: 100 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 100 }}
-      className="fixed inset-0 z-[100] bg-[#2c1012] flex flex-col font-sans max-w-[410px] mx-auto overflow-hidden"
+      className="fixed inset-0 z-[100] bg-[#2c1012] flex flex-col font-sans max-w-[480px] mx-auto overflow-hidden"
     >
       {/* Header */}
       <div className="h-[56px] bg-[#3d0f10] border-b border-white/5 flex items-center px-4 shadow-md shrink-0">

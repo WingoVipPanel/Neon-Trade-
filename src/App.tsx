@@ -2761,7 +2761,7 @@ export default function App() {
   if (isInitializing) {
     return (
       <div className="fixed inset-0 z-[9999] bg-[#0c0a0a] flex flex-col items-center justify-center">
-        <div className="relative w-full h-full max-w-[410px] mx-auto bg-[#0a0a0f] flex flex-col items-center justify-center p-6 gap-6">
+        <div className="relative w-full h-full max-w-[480px] mx-auto bg-[#0a0a0f] flex flex-col items-center justify-center p-6 gap-6">
           {/* Pulsing brand logo */}
           <div className="relative flex items-center justify-center animate-pulse duration-[2000ms]">
             <img 
@@ -3522,7 +3522,7 @@ export default function App() {
                 animate={{ x: 0 }}
                 exit={{ x: '100%' }}
                 transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                className="fixed inset-0 z-[200] bg-[#2b0d0e] flex flex-col font-sans select-none pointer-events-auto mx-auto max-w-[410px]"
+                className="fixed inset-0 z-[200] bg-[#2b0d0e] flex flex-col font-sans select-none pointer-events-auto mx-auto max-w-[480px]"
               >
                 {/* Header */}
                 <div className="bg-[#4d1618] h-[55px] flex items-center px-2 shrink-0">
@@ -3836,7 +3836,7 @@ export default function App() {
                   transition={{ type: 'spring', damping: 25, stiffness: 200 }}
                   className="fixed inset-0 z-[210] pointer-events-auto"
                 >
-                  <div className="relative z-10 w-full max-w-[410px] min-h-screen bg-[#111113] flex flex-col text-white font-sans select-none mx-auto">
+                  <div className="relative z-10 w-full max-w-[480px] min-h-screen bg-[#111113] flex flex-col text-white font-sans select-none mx-auto">
                     {/* Header matching the application's clean design */}
                     <div className="w-full flex items-center justify-between px-4 py-4 bg-[#1c1c1e] border-b border-neutral-900/50 shadow-md">
                       <button 
@@ -3908,7 +3908,7 @@ export default function App() {
               )}
             </AnimatePresence>
 
-            <div className="relative z-10 w-full max-w-[410px] bg-transparent flex flex-col pt-0 pb-0">
+            <div className="relative z-10 w-full max-w-[480px] bg-transparent flex flex-col pt-0 pb-0">
           
           <AnimatePresence mode="wait">
             {currentTab === 'mine' ? (
@@ -4357,7 +4357,7 @@ export default function App() {
                 {/* 1. Interactive App Header */}
                 {!activeWingoRoom && (
                   <>
-                    <div className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-[410px] flex items-center justify-between px-3.5 py-1.5 bg-[#4d1213] border-b border-[#ffd275]/10 select-none shadow-[0_4px_25px_rgba(0,0,0,0.6)] z-50">
+                    <div className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] flex items-center justify-between px-3.5 py-1.5 bg-[#4d1213] border-b border-[#ffd275]/10 select-none shadow-[0_4px_25px_rgba(0,0,0,0.6)] z-50">
                       <div className="flex items-center gap-2">
                       <div className="relative flex items-center justify-center">
                         <img 
@@ -4455,7 +4455,7 @@ export default function App() {
                     <div className="w-full flex flex-col min-h-screen" style={{ background: 'linear-gradient(to bottom, #4a0f10, #260506)' }}>
                     
                     {/* Brand Header representing Wingo 30s top bar directly */}
-                    <div className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-[410px] grid grid-cols-3 items-center px-4 py-1.5 bg-[#4d1213] border-b border-[#ffd275]/10 z-30 shadow-md">
+                    <div className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] grid grid-cols-3 items-center px-4 py-1.5 bg-[#4d1213] border-b border-[#ffd275]/10 z-30 shadow-md">
                       
                       {/* Left aligned Back button */}
                       <div className="flex items-center justify-start">
@@ -6536,7 +6536,7 @@ export default function App() {
 
           {/* 4. Bottom Navbar shaped EXTREMELY EXACTLY like the screenshot */}
           {!activeWingoRoom && !showLanguageScreen && (
-            <div className="fixed bottom-0 left-1/2 -translate-x-1/2 z-40 w-full max-w-[410px] h-[78px] bg-transparent select-none flex items-end">
+            <div className="fixed bottom-0 left-1/2 -translate-x-1/2 z-40 w-full max-w-[480px] h-[78px] bg-transparent select-none flex items-end">
               
               {/* Curved left base wing */}
               <div 
@@ -6924,7 +6924,7 @@ export default function App() {
         </>
       ) : (
         /* RENDER LOGIN/REGISTER ASSETS IF USER IS NOT REGISTERED OR LOGGED IN */
-        <div className="relative z-10 w-full max-w-[410px] bg-transparent flex flex-col pt-6 pb-6 px-4">
+        <div className="relative z-10 w-full max-w-[480px] bg-transparent flex flex-col pt-6 pb-6 px-4">
           
           <AnimatePresence mode="wait">
             {!showLanguageScreen ? (
