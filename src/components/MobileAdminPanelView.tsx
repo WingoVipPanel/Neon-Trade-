@@ -143,7 +143,7 @@ export default function MobileAdminPanelView({ onLogout, onToggleView }: MobileA
                type: 'Deposit',
                userId: data.userId || data.uid || 'Unknown',
                displayUid: data.uid || data.userId || 'Unknown',
-               amount: data.amount || data.totalAmount || 0,
+               amount: data.totalAmount || data.amount || 0,
                timestamp: data.createdAt?.toDate?.()?.getTime?.() || Date.now(),
                status: data.status === 'pending' ? 'Pending' : data.status === 'approved' ? 'Approved' : data.status === 'rejected' ? 'Rejected' : data.status,
                utr: data.utr,
@@ -157,7 +157,7 @@ export default function MobileAdminPanelView({ onLogout, onToggleView }: MobileA
              const data = change.doc.data();
              const status = data.status || 'pending';
              if (status === 'pending') {
-               const amt = data.amount || data.totalAmount || 0;
+               const amt = data.totalAmount || data.amount || 0;
                const txId = change.doc.id;
                const userStr = data.uid || data.userId || 'User';
                triggerRealtimeAlert({
@@ -500,41 +500,37 @@ ${registerLink}`;
     try {
         const collectionName = tx.type === 'Deposit' ? 'depositRequests' : 'withdrawRequests';
         const docRef = doc(db, collectionName, id);
-        
-        await updateDoc(docRef, { status: newStatus.toLowerCase() });
-        notifyToast(newStatus);
-        
-        if (newStatus === 'Approved') {
-            await runTransaction(db, async (t) => {
-                const userRef = doc(db, 'users', tx.userId);
-                const userDoc = await t.get(userRef);
-                if (userDoc.exists()) {
-                    const currentBal = userDoc.data().balance || 0;
-                    if (tx.type === 'Deposit') {
-                         t.update(userRef, { 
-                             balance: currentBal + tx.amount,
-                             totalDeposits: (userDoc.data().totalDeposits || 0) + tx.amount
-                         });
-                    } else if (tx.type === 'Withdraw') {
-                         // Balance is already deducted when making the request in WithdrawScreen.tsx
-                         // Do nothing here to avoid double deduction
-                    }
-                }
-            });
-        } else if (newStatus === 'Rejected') {
-            if (tx.type === 'Withdraw') {
-                await runTransaction(db, async (t) => {
-                    const userRef = doc(db, 'users', tx.userId);
-                    const userDoc = await t.get(userRef);
-                    if (userDoc.exists()) {
-                        const currentBal = userDoc.data().balance || 0;
-                        t.update(userRef, { 
-                            balance: currentBal + tx.amount 
-                        });
-                    }
-                });
-            }
+        let finalUserId = tx.userId;
+        if (/^\d{10}$/.test(finalUserId)) {
+             const phoneDocRef = doc(db, 'users_by_phone', finalUserId);
+             const phoneDoc = await getDoc(phoneDocRef);
+             if (phoneDoc.exists()) {
+                 finalUserId = phoneDoc.data().uid;
+             }
         }
+        const userRef = doc(db, 'users', finalUserId);
+
+        await runTransaction(db, async (t) => {
+             const userDoc = await t.get(userRef);
+             if (!userDoc.exists()) {
+                 throw new Error("User document not found");
+             }
+
+             t.update(docRef, { status: newStatus.toLowerCase() });
+
+             const currentBal = userDoc.data().balance || 0;
+             if (newStatus === 'Approved' && tx.type === 'Deposit') {
+                 t.update(userRef, { 
+                     balance: Number(currentBal) + Number(tx.amount),
+                     totalDeposits: Number(userDoc.data().totalDeposits || 0) + Number(tx.amount)
+                 });
+             } else if (newStatus === 'Rejected' && tx.type === 'Withdraw') {
+                 t.update(userRef, { 
+                     balance: Number(currentBal) + Number(tx.amount) 
+                 });
+             }
+        });
+        notifyToast(newStatus);
     } catch(e: any) {
         notifyToast("Failed: " + e.message);
     }
@@ -546,7 +542,7 @@ ${registerLink}`;
         const collectionName = type === 'Deposit' ? 'depositRequests' : 'withdrawRequests';
         const docRef = doc(db, collectionName, id);
         await deleteDoc(docRef);
-        notifyToast("Deleted successfully");
+        notifyToast("Deleted");
     } catch(e: any) {
         notifyToast("Delete failed: " + e.message);
     }
