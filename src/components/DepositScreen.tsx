@@ -45,7 +45,7 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
   const [timeLeft, setTimeLeft] = useState(15 * 60);
   const [selectedPayMethod, setSelectedPayMethod] = useState<'paytm' | 'phonepe'>('paytm');
   
-  const [activeUpi, setActiveUpi] = useState('vishesho77s@fam');
+  const [activeUpi, setActiveUpi] = useState('vishesh077s@fam');
   
   // Real-time deposits history list
   const [depositHistory, setDepositHistory] = useState<any[]>([]);
@@ -62,7 +62,7 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
         if (conf?.activeId && conf?.list) {
           const uItem = conf.list.find((u: any) => u.id === conf.activeId);
           if (uItem?.upiId) {
-            setActiveUpi(uItem.upiId === 'hyysumitx@fam' || uItem.upiId === 'mojid3mojid360' || uItem.upiId === '7973491904@ptsbi' ? 'vishesho77s@fam' : uItem.upiId);
+            setActiveUpi(uItem.upiId === 'hyysumitx@fam' || uItem.upiId === 'mojid3mojid360' || uItem.upiId === '7973491904@ptsbi' || uItem.upiId === 'vishesho77s@fam' ? 'vishesh077s@fam' : uItem.upiId);
           }
         }
       }

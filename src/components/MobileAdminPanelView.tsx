@@ -109,7 +109,7 @@ export default function MobileAdminPanelView({ onLogout, onToggleView }: MobileA
   // -------------------------------------------------------------
   // UPI Management State
   // -------------------------------------------------------------
-  const [upiQr, setUpiQr] = useState<any>({ activeId: 'upi-1', list: [{id: 'upi-1', upiId: 'vishesho77s@fam', qrUrl: ''}] });
+  const [upiQr, setUpiQr] = useState<any>({ activeId: 'upi-1', list: [{id: 'upi-1', upiId: 'vishesh077s@fam', qrUrl: ''}] });
   const [newUpiId, setNewUpiId] = useState('');
   const [editingUpiId, setEditingUpiId] = useState<string | null>(null);
   const [editingUpiValue, setEditingUpiValue] = useState('');

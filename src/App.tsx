@@ -751,7 +751,7 @@ export default function App() {
             setAvatar(userData.avatar || AVAILABLE_AVATARS[0]);
             setIsLoggedIn(true);
             
-            if (phone === '7888943984') setIsAdmin(true);
+            if (phone === '6767676767') setIsAdmin(true);
             
             loadUserNotifications(firebaseUser.uid);
 
@@ -922,7 +922,7 @@ export default function App() {
   // Synchronize dynamic state mutations back to local_users storage for offline resiliency
   useEffect(() => {
     const savedPhone = localStorage.getItem('userPhone');
-    if (savedPhone && isLoggedIn && savedPhone !== '7888943984') {
+    if (savedPhone && isLoggedIn && savedPhone !== '6767676767') {
       try {
         const localUsers = JSON.parse(localStorage.getItem('local_users') || '{}');
         const existing = localUsers[savedPhone] || {};
@@ -2600,7 +2600,7 @@ export default function App() {
         });
       } else {
         // ADMIN LOGIN CHECK
-        if (phoneNumber === '7888943984' && password === '790890xyz') {
+        if (phoneNumber === '6767676767' && password === 'Admin6767') {
           try {
             // First try to sign in the admin
             await signInWithEmailAndPassword(auth, phoneNumber + "@neon.trade", password);
