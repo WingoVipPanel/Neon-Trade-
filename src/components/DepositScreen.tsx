@@ -45,7 +45,7 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
   const [timeLeft, setTimeLeft] = useState(15 * 60);
   const [selectedPayMethod, setSelectedPayMethod] = useState<'paytm' | 'phonepe'>('paytm');
   
-  const [activeUpi, setActiveUpi] = useState('7973491904@ptsbi');
+  const [activeUpi, setActiveUpi] = useState('vishesho77s@fam');
   
   // Real-time deposits history list
   const [depositHistory, setDepositHistory] = useState<any[]>([]);
@@ -62,7 +62,7 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
         if (conf?.activeId && conf?.list) {
           const uItem = conf.list.find((u: any) => u.id === conf.activeId);
           if (uItem?.upiId) {
-            setActiveUpi(uItem.upiId === 'hyysumitx@fam' || uItem.upiId === 'mojid3mojid360' ? '7973491904@ptsbi' : uItem.upiId);
+            setActiveUpi(uItem.upiId === 'hyysumitx@fam' || uItem.upiId === 'mojid3mojid360' || uItem.upiId === '7973491904@ptsbi' ? 'vishesho77s@fam' : uItem.upiId);
           }
         }
       }
@@ -340,7 +340,7 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
                 </p>
                 <p className="flex gap-1.5">
                   <span className="font-bold text-gray-900">2.</span>
-                  If you scan the QR code from this device's gallery, the payment amount may be limited (≤2000).
+                  If you scan the QR code from this device's gallery, the payment amount may be limited (≤1000).
                 </p>
               </div>
             </div>

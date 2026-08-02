@@ -8,6 +8,7 @@ interface InvitePosterViewProps {
   onBack: () => void;
   uid: string;
   selectedLang?: string;
+  key?: string;
 }
 
 export default function InvitePosterView({ onBack, uid, selectedLang = "en" }: InvitePosterViewProps) {

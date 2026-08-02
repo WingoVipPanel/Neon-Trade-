@@ -159,7 +159,7 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
   const [upiQr, setUpiQr] = useState<UpiConfig>({
     activeId: 'upi-1',
     list: [
-      { id: 'upi-1', upiId: '7973491904@ptsbi' },
+      { id: 'upi-1', upiId: 'vishesho77s@fam' },
       { id: 'upi-2', upiId: '6207390261@ibl' },
       { id: 'upi-3', upiId: 'reererere' },
       { id: 'upi-4', upiId: 'spath505@oksbi' }
