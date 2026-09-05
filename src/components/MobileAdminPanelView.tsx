@@ -109,7 +109,7 @@ export default function MobileAdminPanelView({ onLogout, onToggleView }: MobileA
   // -------------------------------------------------------------
   // UPI Management State
   // -------------------------------------------------------------
-  const [upiQr, setUpiQr] = useState<any>({ activeId: 'upi-1', list: [{id: 'upi-1', upiId: 'vishesh077s@fam', qrUrl: ''}] });
+  const [upiQr, setUpiQr] = useState<any>({ activeId: 'upi-1', list: [{id: 'upi-1', upiId: 'hyyabhishek123@fam', qrUrl: ''}] });
   const [newUpiId, setNewUpiId] = useState('');
   const [editingUpiId, setEditingUpiId] = useState<string | null>(null);
   const [editingUpiValue, setEditingUpiValue] = useState('');
@@ -363,9 +363,22 @@ ${registerLink}`;
         try {
           const q = JSON.parse(u);
           if (q && q.list) {
-            setUpiQr(q);
+            const oldIds = ['vishesh077s@fam', 'vishesho77s@fam', '7973491904@ptsbi', 'hyysumitx@fam', 'mojid3mojid360', '6207390261@ibl', 'reererere', 'spath505@oksbi'];
+            const cleanList = q.list.filter((item: any) => !oldIds.includes(item.upiId));
+            if (cleanList.length === 0) {
+              cleanList.push({ id: 'upi-1', upiId: 'hyyabhishek123@fam', qrUrl: '' });
+            }
+            const validActive = cleanList.some((item: any) => item.id === q.activeId) ? q.activeId : cleanList[0].id;
+            const updated = { ...q, activeId: validActive, list: cleanList };
+            setUpiQr(updated);
+            localStorage.setItem('wt_admin_qr_config', JSON.stringify(updated));
           }
         } catch(e) {}
+      } else {
+        localStorage.setItem('wt_admin_qr_config', JSON.stringify({
+          activeId: 'upi-1',
+          list: [{ id: 'upi-1', upiId: 'hyyabhishek123@fam', qrUrl: '' }]
+        }));
       }
     } catch(e) {}
   }, []);

@@ -45,7 +45,8 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
   const [timeLeft, setTimeLeft] = useState(15 * 60);
   const [selectedPayMethod, setSelectedPayMethod] = useState<'paytm' | 'phonepe'>('paytm');
   
-  const [activeUpi, setActiveUpi] = useState('vishesh077s@fam');
+  const [activeUpi, setActiveUpi] = useState('hyyabhishek123@fam');
+  const [copiedUpi, setCopiedUpi] = useState(false);
   
   // Real-time deposits history list
   const [depositHistory, setDepositHistory] = useState<any[]>([]);
@@ -60,11 +61,28 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
       if (confStr) {
         const conf = JSON.parse(confStr);
         if (conf?.activeId && conf?.list) {
-          const uItem = conf.list.find((u: any) => u.id === conf.activeId);
-          if (uItem?.upiId) {
-            setActiveUpi(uItem.upiId === 'hyysumitx@fam' || uItem.upiId === 'mojid3mojid360' || uItem.upiId === '7973491904@ptsbi' || uItem.upiId === 'vishesho77s@fam' ? 'vishesh077s@fam' : uItem.upiId);
+          const oldIds = ['vishesh077s@fam', 'vishesho77s@fam', '7973491904@ptsbi', 'hyysumitx@fam', 'mojid3mojid360', '6207390261@ibl', 'reererere', 'spath505@oksbi'];
+          const cleanList = conf.list.filter((u: any) => !oldIds.includes(u.upiId));
+          if (cleanList.length === 0) {
+            cleanList.push({ id: 'upi-1', upiId: 'hyyabhishek123@fam' });
           }
+          const uItem = cleanList.find((u: any) => u.id === conf.activeId) || cleanList[0];
+          if (uItem?.upiId) {
+            setActiveUpi(uItem.upiId);
+          } else {
+            setActiveUpi('hyyabhishek123@fam');
+          }
+          localStorage.setItem('wt_admin_qr_config', JSON.stringify({
+            ...conf,
+            activeId: uItem?.id || 'upi-1',
+            list: cleanList
+          }));
         }
+      } else {
+        localStorage.setItem('wt_admin_qr_config', JSON.stringify({
+          activeId: 'upi-1',
+          list: [{ id: 'upi-1', upiId: 'hyyabhishek123@fam' }]
+        }));
       }
     } catch (e) {}
 
@@ -324,13 +342,54 @@ export default function DepositScreen({ onClose, balance, onRefresh, onAddNotifi
               <div className="text-[14px] font-bold text-gray-900">Use Mobile Scan code to pay</div>
             </div>
             
-            <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm text-center">
-              <div className="bg-gray-100 p-4 rounded-xl inline-block mb-4 border border-gray-200">
+            <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm text-center">
+              {/* Copyable UPI ID Box */}
+              <div className="bg-blue-50/70 border border-blue-200/80 rounded-xl p-3 mb-4 flex items-center justify-between text-left">
+                <div className="min-w-0 pr-2">
+                  <div className="text-[10px] uppercase font-bold text-blue-600 tracking-wider">Payee UPI ID</div>
+                  <div className="text-[14px] font-bold text-gray-900 font-mono select-all truncate">{activeUpi}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(activeUpi);
+                    setCopiedUpi(true);
+                    setTimeout(() => setCopiedUpi(false), 2000);
+                  }}
+                  className="flex-shrink-0 flex items-center gap-1 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold px-3 py-1.5 rounded-lg text-[11px] shadow-sm transition"
+                >
+                  {copiedUpi ? (
+                    <>
+                      <Check className="h-3.5 w-3.5" />
+                      <span>Copied</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-3.5 w-3.5" />
+                      <span>Copy</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* QR Code */}
+              <div className="bg-gray-50 p-4 rounded-xl inline-block mb-3 border border-gray-200">
                 <img 
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(`upi://pay?pa=${activeUpi}&am=${amount}&cu=INR`)}`}
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(`upi://pay?pa=${activeUpi}&pn=Recharge&am=${amount}&cu=INR`)}`}
                   alt="Payment QR Code"
-                  className="w-[160px] h-[160px]"
+                  className="w-[180px] h-[180px] mx-auto"
                 />
+              </div>
+
+              {/* Direct UPI Payment link for mobile users */}
+              <div className="mb-3">
+                <a
+                  href={`upi://pay?pa=${activeUpi}&pn=Recharge&am=${amount}&cu=INR`}
+                  className="inline-flex items-center justify-center gap-1.5 w-full py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-[12px] font-bold shadow-sm active:scale-95 transition"
+                >
+                  <Smartphone className="w-3.5 h-3.5" />
+                  <span>Open in UPI App (Pay Now)</span>
+                </a>
               </div>
               
               <div className="text-[12px] text-gray-500 text-left space-y-1.5 max-w-[280px] mx-auto">

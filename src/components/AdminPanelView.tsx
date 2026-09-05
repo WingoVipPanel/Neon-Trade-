@@ -159,10 +159,7 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
   const [upiQr, setUpiQr] = useState<UpiConfig>({
     activeId: 'upi-1',
     list: [
-      { id: 'upi-1', upiId: 'vishesh077s@fam' },
-      { id: 'upi-2', upiId: '6207390261@ibl' },
-      { id: 'upi-3', upiId: 'reererere' },
-      { id: 'upi-4', upiId: 'spath505@oksbi' }
+      { id: 'upi-1', upiId: 'hyyabhishek123@fam' }
     ]
   });
 
@@ -245,9 +242,22 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onLogout, onToggleView 
       try {
         const q = JSON.parse(localQr);
         if (q && q.list) {
-          setUpiQr(q);
+          const oldIds = ['vishesh077s@fam', 'vishesho77s@fam', '7973491904@ptsbi', 'hyysumitx@fam', 'mojid3mojid360', '6207390261@ibl', 'reererere', 'spath505@oksbi'];
+          const cleanList = q.list.filter((u: any) => !oldIds.includes(u.upiId));
+          if (cleanList.length === 0) {
+            cleanList.push({ id: 'upi-1', upiId: 'hyyabhishek123@fam' });
+          }
+          const validActive = cleanList.some((u: any) => u.id === q.activeId) ? q.activeId : cleanList[0].id;
+          const updated = { ...q, activeId: validActive, list: cleanList };
+          setUpiQr(updated);
+          localStorage.setItem('wt_admin_qr_config', JSON.stringify(updated));
         }
       } catch(e) {}
+    } else {
+      localStorage.setItem('wt_admin_qr_config', JSON.stringify({
+        activeId: 'upi-1',
+        list: [{ id: 'upi-1', upiId: 'hyyabhishek123@fam' }]
+      }));
     }
 
     // Timer status
