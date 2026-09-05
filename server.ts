@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import compression from "compression";
 import { createServer as createViteServer } from "vite";
 import http from "http";
 import { Server } from "socket.io";
@@ -142,6 +143,7 @@ function generateFallbackResult(room: Room): WingoHistoryRecord {
 
 async function startServer() {
   const app = express();
+  app.use(compression());
   const server = http.createServer(app);
   const io = new Server(server, { cors: { origin: "*" } });
   
@@ -405,7 +407,15 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+    app.use(express.static(distPath, {
+      maxAge: '1y',
+      immutable: true,
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.html')) {
+          res.setHeader('Cache-Control', 'no-cache');
+        }
+      }
+    }));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });

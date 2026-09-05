@@ -72,20 +72,22 @@ import {
   signOut
 } from './lib/firebase';
 
-import MinesGameView from './components/MinesGameView';
-import DepositScreen from './components/DepositScreen';
-import WithdrawScreen from './components/WithdrawScreen';
-import SupportChat from './components/SupportChat';
-import AdminPanelView from './components/AdminPanelView';
-import MobileAdminPanelView from './components/MobileAdminPanelView';
-import VipLevelsView from './components/VipLevelsView';
-import InvitationBonusView from './components/InvitationBonusView';
-import InviteWheelView from './components/InviteWheelView';
 import { WingoWinningsModal } from './components/WingoWinningsModal';
 import QuickInstall from './components/QuickInstall';
+
+// High-speed lazy loading for secondary modules & admin panels
+const MinesGameView = React.lazy(() => import('./components/MinesGameView'));
+const DepositScreen = React.lazy(() => import('./components/DepositScreen'));
+const WithdrawScreen = React.lazy(() => import('./components/WithdrawScreen'));
+const SupportChat = React.lazy(() => import('./components/SupportChat'));
+const MobileAdminPanelView = React.lazy(() => import('./components/MobileAdminPanelView'));
+const VipLevelsView = React.lazy(() => import('./components/VipLevelsView'));
+const InvitationBonusView = React.lazy(() => import('./components/InvitationBonusView'));
+const InviteWheelView = React.lazy(() => import('./components/InviteWheelView'));
+
 // Premium background and default assets from our assets directory
 const gameLogo = "https://i.ibb.co/rGjxr0hn/file-00000000d308720cab57b8c2210b5b42.png";
-import casinoBg from './assets/images/casino_bg_1779214894050.png';
+import casinoBg from './assets/images/casino_bg.webp';
 
 // 8 Indian Casino style realistic player avatars shown in the user's reference picture
 const AVAILABLE_AVATARS = [
@@ -839,10 +841,15 @@ export default function App() {
         // Not signed in to Firebase Auth
         setIsLoggedIn(false);
       }
-      setTimeout(() => {
-        setIsInitializing(false);
-      }, 1500);
+      setIsInitializing(false);
     });
+
+    // Prefetch interactive components in background for instant opening
+    const prefetchTimer = setTimeout(() => {
+      import('./components/MinesGameView');
+      import('./components/DepositScreen');
+      import('./components/WithdrawScreen');
+    }, 600);
 
     // Capture referral from URL
     const params = new URLSearchParams(window.location.search);
@@ -851,7 +858,10 @@ export default function App() {
       setReferralInput(refCode);
     }
 
-    return () => unsubscribe();
+    return () => {
+      clearTimeout(prefetchTimer);
+      unsubscribe();
+    };
   }, []);
 
   // Synchronize claimed gifts and real-time user balance from Firestore
@@ -2076,9 +2086,9 @@ export default function App() {
   useEffect(() => {
     let active = true;
     const socket = io({
-      transports: ['polling', 'websocket'],
+      transports: ['websocket', 'polling'],
       reconnectionAttempts: Infinity,
-      timeout: 20000,
+      timeout: 10000,
       autoConnect: true
     });
 
@@ -2784,7 +2794,15 @@ export default function App() {
   }
 
   if (isLoggedIn && isAdmin && showAdminView) {
-    return <MobileAdminPanelView onLogout={handleLogout} onToggleView={() => setShowAdminView(false)} />;
+    return (
+      <React.Suspense fallback={
+        <div className="fixed inset-0 bg-[#0a0a0f] flex items-center justify-center">
+          <div className="w-8 h-8 border-2 border-red-500/20 border-t-red-500 rounded-full animate-spin" />
+        </div>
+      }>
+        <MobileAdminPanelView onLogout={handleLogout} onToggleView={() => setShowAdminView(false)} />
+      </React.Suspense>
+    );
   }
 
   return (
@@ -3810,18 +3828,24 @@ export default function App() {
                   transition={{ type: 'spring', damping: 25, stiffness: 200 }}
                   className="fixed inset-0 z-[210] pointer-events-auto"
                 >
-                  <VipLevelsView 
-                    onBack={() => setShowVipScreen(false)}
-                    userExp={userExp}
-                    userLevel={userLevel}
-                    nickname={nickname}
-                    avatar={avatar}
-                    claimedVipRewards={claimedVipRewards}
-                    claimedMonthlyRewards={claimedMonthlyRewards}
-                    onClaimReward={claimVipReward}
-                    onClaimMonthlyReward={claimMonthlyReward}
-                    selectedLang={selectedLang}
-                  />
+                  <React.Suspense fallback={
+                    <div className="fixed inset-0 bg-[#1a0809] flex items-center justify-center">
+                      <div className="w-8 h-8 border-2 border-amber-400/20 border-t-amber-400 rounded-full animate-spin" />
+                    </div>
+                  }>
+                    <VipLevelsView 
+                      onBack={() => setShowVipScreen(false)}
+                      userExp={userExp}
+                      userLevel={userLevel}
+                      nickname={nickname}
+                      avatar={avatar}
+                      claimedVipRewards={claimedVipRewards}
+                      claimedMonthlyRewards={claimedMonthlyRewards}
+                      onClaimReward={claimVipReward}
+                      onClaimMonthlyReward={claimMonthlyReward}
+                      selectedLang={selectedLang}
+                    />
+                  </React.Suspense>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -4434,22 +4458,29 @@ export default function App() {
 
                 {activeWingoRoom ? (
                   activeWingoRoom === 'mines' || activeWingoRoom === 'mines_pro' ? (
-                    <MinesGameView 
-                      balance={balance} 
-                      setBalance={setBalance} 
-                      selectedLang={selectedLang} 
-                      avatar={avatar}
-                      uid={uid}
-                      nickname={nickname}
-                      setNickname={setNickname}
-                      onBetPlaced={(amt) => addExperience(amt, 'Mines Bet EXP')}
-                      onClose={() => {
-                        setActiveWingoRoom(null);
-                        setWingoBetOption(null);
-                        setWingoWinningsAlert(null);
-                        setWingoOuterMultiplier(1);
-                      }}
-                    />
+                    <React.Suspense fallback={
+                      <div className="w-full min-h-screen bg-[#110103] flex flex-col items-center justify-center">
+                        <div className="w-10 h-10 border-3 border-amber-400/20 border-t-amber-400 rounded-full animate-spin mb-3" />
+                        <span className="text-amber-400/80 text-xs font-bold tracking-widest uppercase">Loading Mines...</span>
+                      </div>
+                    }>
+                      <MinesGameView 
+                        balance={balance} 
+                        setBalance={setBalance} 
+                        selectedLang={selectedLang} 
+                        avatar={avatar}
+                        uid={uid}
+                        nickname={nickname}
+                        setNickname={setNickname}
+                        onBetPlaced={(amt) => addExperience(amt, 'Mines Bet EXP')}
+                        onClose={() => {
+                          setActiveWingoRoom(null);
+                          setWingoBetOption(null);
+                          setWingoWinningsAlert(null);
+                          setWingoOuterMultiplier(1);
+                        }}
+                      />
+                    </React.Suspense>
                   ) : (
                     /* ----------------- INTERACTIVE WINGO GAMEPLAY WINDOW (NEON TRADE CLONE) ----------------- */
                     <div className="w-full flex flex-col min-h-screen" style={{ background: 'linear-gradient(to bottom, #4a0f10, #260506)' }}>
@@ -6239,33 +6270,45 @@ export default function App() {
 
               </motion.div>
             ) : currentTab === 'earn' ? (
-              <InvitationBonusView 
-                uid={uid} 
-                selectedLang={selectedLang} 
-                onClose={() => {}} 
-                inviteeCount={inviteeCount}
-                inviteeDepositCount={inviteeDepositCount}
-                claimedBonuses={claimedInvitationBonuses}
-                onClaim={handleClaimInvitationBonus}
-              />
+              <React.Suspense fallback={
+                <div className="w-full min-h-[350px] flex items-center justify-center">
+                  <div className="w-8 h-8 border-2 border-red-500/20 border-t-red-500 rounded-full animate-spin" />
+                </div>
+              }>
+                <InvitationBonusView 
+                  uid={uid} 
+                  selectedLang={selectedLang} 
+                  onClose={() => {}} 
+                  inviteeCount={inviteeCount}
+                  inviteeDepositCount={inviteeDepositCount}
+                  claimedBonuses={claimedInvitationBonuses}
+                  onClaim={handleClaimInvitationBonus}
+                />
+              </React.Suspense>
             ) : currentTab === 'wheel' ? (
-              <InviteWheelView 
-                selectedLang={selectedLang} 
-                balance={balance} 
-                setBalance={setBalance} 
-                setLobbyToast={setLobbyToast} 
-                nickname={nickname}
-                avatar={avatar}
-                totalDeposits={totalDeposits}
-                inviteeDepositCount={inviteeDepositCount}
-                usedSpins={usedSpins}
-                uid={uid}
-                firebaseUid={auth.currentUser?.uid || ''}
-                onSpinUsed={() => {
-                  // DB update is now handled by InviteWheelView to prevent race conditions
-                  setUsedSpins(prev => prev + 1);
-                }}
-              />
+              <React.Suspense fallback={
+                <div className="w-full min-h-[350px] flex items-center justify-center">
+                  <div className="w-8 h-8 border-2 border-amber-400/20 border-t-amber-400 rounded-full animate-spin" />
+                </div>
+              }>
+                <InviteWheelView 
+                  selectedLang={selectedLang} 
+                  balance={balance} 
+                  setBalance={setBalance} 
+                  setLobbyToast={setLobbyToast} 
+                  nickname={nickname}
+                  avatar={avatar}
+                  totalDeposits={totalDeposits}
+                  inviteeDepositCount={inviteeDepositCount}
+                  usedSpins={usedSpins}
+                  uid={uid}
+                  firebaseUid={auth.currentUser?.uid || ''}
+                  onSpinUsed={() => {
+                    // DB update is now handled by InviteWheelView to prevent race conditions
+                    setUsedSpins(prev => prev + 1);
+                  }}
+                />
+              </React.Suspense>
             ) : (
               <motion.div
                 key="other-views"
@@ -7329,12 +7372,18 @@ export default function App() {
             transition={{ duration: 0.2 }}
             className="fixed inset-0 z-[100]"
           >
-            <DepositScreen 
-              onClose={() => setShowDepositScreen(false)} 
-              balance={balance} 
-              onRefresh={handleRefreshBalance}
-              onAddNotification={handleManualNotification}
-            />
+            <React.Suspense fallback={
+              <div className="fixed inset-0 bg-[#0c0a0a] flex items-center justify-center">
+                <div className="w-8 h-8 border-2 border-red-500/20 border-t-red-500 rounded-full animate-spin" />
+              </div>
+            }>
+              <DepositScreen 
+                onClose={() => setShowDepositScreen(false)} 
+                balance={balance} 
+                onRefresh={handleRefreshBalance}
+                onAddNotification={handleManualNotification}
+              />
+            </React.Suspense>
           </motion.div>
         )}
         {showWithdrawScreen && (
@@ -7346,13 +7395,19 @@ export default function App() {
             transition={{ duration: 0.2 }}
             className="fixed inset-0 z-[100]"
           >
-            <WithdrawScreen 
-              onClose={() => setShowWithdrawScreen(false)} 
-              balance={balance} 
-              onRefresh={handleRefreshBalance}
-              selectedLang={selectedLang}
-              onAddNotification={handleManualNotification}
-            />
+            <React.Suspense fallback={
+              <div className="fixed inset-0 bg-[#0c0a0a] flex items-center justify-center">
+                <div className="w-8 h-8 border-2 border-red-500/20 border-t-red-500 rounded-full animate-spin" />
+              </div>
+            }>
+              <WithdrawScreen 
+                onClose={() => setShowWithdrawScreen(false)} 
+                balance={balance} 
+                onRefresh={handleRefreshBalance}
+                selectedLang={selectedLang}
+                onAddNotification={handleManualNotification}
+              />
+            </React.Suspense>
           </motion.div>
         )}
         {showBetSuccessful && (
@@ -7371,23 +7426,27 @@ export default function App() {
       </AnimatePresence>
       <AnimatePresence>
         {showGlobalChat && (
-          <SupportChat 
-            onClose={() => setShowGlobalChat(false)} 
-            userName={nickname}
-          />
+          <React.Suspense fallback={null}>
+            <SupportChat 
+              onClose={() => setShowGlobalChat(false)} 
+              userName={nickname}
+            />
+          </React.Suspense>
         )}
       </AnimatePresence>
       <AnimatePresence>
         {showInvitationBonus && (
-          <InvitationBonusView 
-            onClose={() => setShowInvitationBonus(false)} 
-            selectedLang={selectedLang}
-            uid={uid}
-            inviteeCount={inviteeCount}
-            inviteeDepositCount={inviteeDepositCount}
-            claimedBonuses={claimedInvitationBonuses}
-            onClaim={handleClaimInvitationBonus}
-          />
+          <React.Suspense fallback={null}>
+            <InvitationBonusView 
+              onClose={() => setShowInvitationBonus(false)} 
+              selectedLang={selectedLang}
+              uid={uid}
+              inviteeCount={inviteeCount}
+              inviteeDepositCount={inviteeDepositCount}
+              claimedBonuses={claimedInvitationBonuses}
+              onClaim={handleClaimInvitationBonus}
+            />
+          </React.Suspense>
         )}
       </AnimatePresence>
       <WingoWinningsModal 
